@@ -992,6 +992,7 @@ function loadDeleteSelected(){
     //    但這種存檔任何分頁都載入不了，也就不可能被舊分頁寫回，故直接放行刪除；
     //    否則玩家會落入「載不了也刪不掉、該欄位永久報廢」的死局。
     if(fp && !_roleMarkDeleted(fp)){ alert('無法建立刪除保護，為避免舊分頁寫回角色，本次刪除已取消。'); return; }
+    try { if(typeof mercPetReleaseForEmployer === 'function') mercPetReleaseForEmployer(oldPlayer); } catch(e){ console.warn('merc pet employer cleanup', e); }
     try { if(typeof petReleaseSlotAssignments === 'function') petReleaseSlotAssignments(slot); } catch(e){ console.warn('pet delete cleanup', e); }
     try { if(typeof mercLedgerPurgeSlot === 'function') mercLedgerPurgeSlot(slot); } catch(e){ console.warn('merc delete cleanup', e); }
     try { if(typeof antharasForgetRoleClear === 'function') antharasForgetRoleClear(oldPlayer, slot); } catch(e){ console.warn('antharas clear cleanup', e); }
@@ -1883,6 +1884,7 @@ function loadGame() {
         syncShahaArrow();   // 🏝️ 沙哈之弓：載入時校正無限箭狀態
         calcStats();
         try { if (typeof _petEnforceCarry === 'function') { _petEnforceCarry(); if (_petRosterDirty) petRosterSave(); } } catch (e) { console.warn('pet carry enforcement', e); }
+        try { if (typeof mercPetReconcileLeases === 'function') { mercPetReconcileLeases(); if (_petRosterDirty) petRosterSave(); } } catch (e) { console.warn('merc pet lease reconciliation', e); }
         applySherineTheme();   // 🔮 還原席琳的世界視覺主題
         changeMap(true);
         renderTabs();

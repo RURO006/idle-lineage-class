@@ -1419,7 +1419,7 @@ function enemyAttackChooseVictim(mob, idx) {
     if (ironTarget === player) { enemyPhysicalAttack(mob, idx, 0, null, null, true); return; }
     if (ironTarget) { enemyAttackAlly(mob, ironTarget, true); return; }
     // 🐾 v3.2.17 出戰寵物加入受害者池：受擊權重 物理4／特殊3／魔法2（PET_KIND_WEIGHT）
-    let pets = (typeof petsOutList === 'function') ? petsOutList().filter(p => p && !p._downed && (p.hp || 0) > 0) : [];
+    let pets = (typeof partyPetsOutList === 'function') ? partyPetsOutList().filter(p => p && !p._downed && (p.hp || 0) > 0) : [];
     // 🧙 v3.2.21 召喚物 v2 加入受害者池（可被打死→全滅自動重施）：權重見下方 _sumW——v3.2.81 召喚術/造屍術＝4·屬性精靈＝3（原全 3）
     let sums = (typeof summonV2List === 'function') ? summonV2List().filter(s => s && !s._downed && (s.hp || 0) > 0) : [];
     if (typeof necroSkeletonList === 'function') sums = sums.concat(necroSkeletonList().filter(s => s && !s._downed && (s.hp || 0) > 0));   // 🏺 v3.8.12 骷髏復生實體
@@ -1823,7 +1823,7 @@ function castMobMagic(mob, sk) {
     let redirectable = !!sk.dmg || ['stone', 'paralyze', 'silence', 'magicseal', 'freeze', 'sleep', 'scald', 'stun', 'slowatk', 'poison', 'burn', 'bleed', 'frost_breath', 'weaken', 'disease', 'potionfrost', 'foulwater'].includes(sk.type);   // 🌊 v3.6.20 汙濁之水：單體·依仇恨權重打玩家或某傭兵（寵物中招走 js/22）
     if (!redirectable) { applyMobMagic(mob, sk); return; }
     let allies = (player.allies || []).filter(a => a && !a._downed && (a.curHp || 0) > 0);
-    let pets = (typeof petsOutList === 'function') ? petsOutList().filter(p => p && !p._downed && (p.hp || 0) > 0) : [];
+    let pets = (typeof partyPetsOutList === 'function') ? partyPetsOutList().filter(p => p && !p._downed && (p.hp || 0) > 0) : [];
     let sums = (typeof summonV2List === 'function') ? summonV2List().filter(s => s && !s._downed && (s.hp || 0) > 0) : [];   // 🧙 v3.2.82 召喚物加入魔法受害者池
     if (typeof necroSkeletonList === 'function') sums = sums.concat(necroSkeletonList().filter(s => s && !s._downed && (s.hp || 0) > 0));   // 🏺 v3.8.12 骷髏復生實體
     if (typeof mercSummonList === 'function') sums = sums.concat(mercSummonList());   // 🧱 v3.4.50 傭兵召喚物也入魔法受害者池（AOE 波及＋傷害型單體加權·applyMobMagicToSummon 通用）

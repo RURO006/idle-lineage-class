@@ -2592,7 +2592,7 @@ function renderSquadPanel() {
     if (!panel) return;
     if (!_autoCollapseInit) { _autoCollapseInit = true; }   // 🔧 v2.6.76 收合偏好停用：自動化設定已改分頁內嵌(v2.6.74)、傭兵隊伍面板取消收合恆展開（舊 fb5_*_collapsed 偏好不再套用·防「收合過就永遠展不開」）
     let allies = (player && player.allies) ? player.allies.filter(Boolean) : [];
-    let _pets = (typeof petsOutList === 'function' && player && player.cls) ? petsOutList() : [];   // 🐾 v3.2.17 出戰寵物：顯示於隊伍清單下方
+    let _pets = (typeof partyPetsOutList === 'function' && player && player.cls) ? partyPetsOutList() : [];   // 🐾 出戰寵物：含傭兵租借寵物
     let _summons = (typeof summonV2List === 'function' && player && player.cls) ? summonV2List().filter(s => s && !s._downed && (s.hp || 0) > 0) : [];
     if (typeof necroSkeletonList === 'function' && player && player.cls) _summons = _summons.concat(necroSkeletonList().filter(s => s && !s._downed && (s.hp || 0) > 0));
     let _summonSk = (typeof summonV2ActiveSk === 'function') ? summonV2ActiveSk() : '';

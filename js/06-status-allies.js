@@ -728,6 +728,7 @@ function purgeReplacedAllies() {
             }
             snapshotMercPrefs(a);                             // 換成新角色 → 記憶舊角色設定後解散
             _settleAllyExp(a, 'dismiss');
+            try { if (typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(a, false); } catch (e) {}
             removed.push(a._allyName || ('存檔 ' + a._slot));
             return false;
         });
@@ -773,6 +774,7 @@ function buildAlly(slotN) {
     _applyMercCubeRes(ally);   // 🔮 v2.7.96 幻術士傭兵立方屬性抗性 rider（招募快照·比照玩家立方 buff 給 +30 抗性）
     { let _rm = royalAllyMult(); if (_rm !== 1) { ally.mhp = Math.max(1, Math.floor((ally.mhp || 1) * _rm)); ally.mmp = Math.floor((ally.mmp || 0) * _rm); } }   // 👑 王族魅力加成：傭兵 HP/MP ×(1+魅力/200)（招募當下快照·主玩家 player 已於上行還原）
     ally._slot = slotN; ally._allyName = allyName(ally); ally._atkCd = 0; ally.curHp = ally.mhp;
+    ally._mercPetLeaseKey = ''; ally._mercPetUids = [];   // 🧑‍🤝‍🧑 寵物租借欄位可選：舊存檔／新建快照沒有租借時保持空陣列
     ally._mercChaModelV = 2;   // 王族魅力只影響帶兵上限；新傭兵快照不含舊版魅力 HP/MP 加成
     ally._downed = false;   // 🤝 Phase 3：倒地旗標（curHp 歸零→true·停止行動/不被選為目標·須隊伍面板手動復活）
     ally._reviveCd = 0;   // 🤝 Phase 3：倒地後復活冷卻（ticks 倒數；倒地時設 150＝15秒·每 tick 於 alliesTick 遞減·存檔安全相對值）
@@ -2675,7 +2677,7 @@ function allyActWithSkillGate(ally, actFn) {
 function teamRecoverMp(amount) {
     if (player) player.mp = Math.min(player.mmp || 0, (player.mp || 0) + amount);
     (player && player.allies || []).forEach(a => { if (a && !a._downed) a.mp = Math.min(a.mmp || 0, (a.mp || 0) + amount); });
-    try { if (typeof petsOutList === 'function') petsOutList().forEach(p => { if (p && !p._downed && p.mmp != null) p.mp = Math.min(p.mmp || 0, (p.mp || 0) + amount); }); } catch (e) {}   // 🩹 v3.2.67 回魔也惠及出戰寵物（召喚物無 MP 池·略過）
+    try { if (typeof partyPetsOutList === 'function') partyPetsOutList().forEach(p => { if (p && !p._downed && p.mmp != null) { let mx = p.mmp + (((typeof petDerive === 'function' && petDerive(p, typeof petCombatOwner === 'function' ? petCombatOwner(p) : player)) || {}).mmpBonus || 0); p.mp = Math.min(mx, (p.mp || 0) + amount); } }); } catch (e) {}   // 🩹 v3.2.67 回魔也惠及隊伍（含傭兵租借）寵物
 }
 // 🩹 v3.2.67 治癒/輔助受益者擴充（單一真相）：把「出戰未倒地寵物＋未倒地召喚物」也納入「玩家/傭兵以外可受益對象」。
 //   欄位異質：玩家 hp/mhp·statuses；傭兵 curHp/mhp·statuses；寵物 hp/mhp·_statuses（有 outSlot/無 curHp/無 skId）；召喚物 hp/mhp（無 mp/無狀態·有 skId）。
@@ -2684,7 +2686,7 @@ function healBeneficiaries() {   // 全部「能被治癒/HoT 惠及」的存活
     let arr = [];
     if (typeof player !== 'undefined' && player && !player.dead) arr.push(player);
     (typeof player !== 'undefined' && player && player.allies || []).forEach(a => { if (a && !a._downed && (a.curHp || 0) > 0) arr.push(a); });
-    try { if (typeof petsOutList === 'function') petsOutList().forEach(p => { if (p && !p._downed && (p.hp || 0) > 0) arr.push(p); }); } catch (e) {}
+    try { if (typeof partyPetsOutList === 'function') partyPetsOutList().forEach(p => { if (p && !p._downed && (p.hp || 0) > 0) arr.push(p); }); } catch (e) {}
     try { if (typeof summonV2List === 'function') summonV2List().forEach(s => { if (s && !s._noHeal && !s._downed && (s.hp || 0) > 0) arr.push(s); }); } catch (e) {}
     try { if (typeof mercSummonList === 'function') mercSummonList().forEach(s => { if (s && !s._downed && (s.hp || 0) > 0) arr.push(s); }); } catch (e) {}   // 🩹 v3.4.71 傭兵召喚物（v3.4.50 起有血）也納入治癒受益池·欄位 hp/mhp 與玩家召喚物一致走 _sup* else 分支
     try { if (typeof guardAliveList === 'function') guardAliveList().forEach(g => { if (g && !g._downed && (g.hp || 0) > 0) arr.push(g); }); } catch (e) {}   // 🛡️ v3.8.4 城堡護衛納入治癒/HoT 受益池（欄位 hp/mhp·無 curHp/skId → 走 _sup* else 分支；無狀態無 MP 故不進淨化/回魔，同召喚物）
@@ -2974,7 +2976,7 @@ function shareTeamBuffs(caster) {
 }
 // 🆕 v2.6.28 淨化共用（魔法相消術/聖潔之光/解毒術·玩家與傭兵共用）：施法者(自己)受硬控(石化/冰凍/暈眩/麻痺/沉睡)或沉默/魔封→無法施放；否則幫隊員解可解狀態。
 //    v2.6.29 改「一次只解一人·優先主要玩家」：teamCleanseOne 依 _dispelTeamMembers 順序(玩家排首→傭兵)找第一個有可解狀態者，只清除該一人的該類狀態並回傳被解者。
-function _dispelTeamMembers() { let arr = []; if (typeof player !== 'undefined' && player) { arr.push(player); (player.allies || []).forEach(a => { if (a && !a._downed) arr.push(a); }); } try { if (typeof petsOutList === 'function') petsOutList().forEach(p => { if (p && !p._downed) arr.push(p); }); } catch (e) {} return arr; }   // 🩹 v3.2.67 淨化也惠及出戰寵物（讀 _statuses·召喚物無狀態→不列入）
+function _dispelTeamMembers() { let arr = []; if (typeof player !== 'undefined' && player) { arr.push(player); (player.allies || []).forEach(a => { if (a && !a._downed) arr.push(a); }); } try { if (typeof partyPetsOutList === 'function') partyPetsOutList().forEach(p => { if (p && !p._downed) arr.push(p); }); } catch (e) {} return arr; }   // 🩹 v3.2.67 淨化也惠及出戰寵物（讀 _statuses·召喚物無狀態→不列入）
 function teamHasCurableStatus(kinds) { return _dispelTeamMembers().some(m => { let st = _supStatuses(m); return st && kinds.some(k => (st[k] || 0) > 0); }); }
 function teamCleanseOne(kinds) { let members = _dispelTeamMembers(); for (let i = 0; i < members.length; i++) { let m = members[i]; let st = _supStatuses(m); if (st && kinds.some(k => (st[k] || 0) > 0)) { kinds.forEach(k => { if (st[k]) st[k] = 0; }); return m; } } return null; }   // 一次只解一人·優先主要玩家（player 已排首）·回傳被解者供 log
 function _dispelTargetName(m) { if (typeof player !== 'undefined' && m === player) return '自己'; if (m && m.curHp != null) return '協力·' + (m._allyName || '傭兵'); if (m && m.form) return '寵物·' + m.form; return '傭兵'; }
@@ -3367,6 +3369,7 @@ function refreshAllyOnce(slotN) {
     let _curSeed = _slotCharEnSeed(slotN);
     if (cur.enSeed && _curSeed && _curSeed !== cur.enSeed) {
         let m0 = _settleAllyExp(cur, 'dismiss');
+        try { if (typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(cur, false); } catch (e) {}
         player.allies = player.allies.filter(a => a && a._slot !== slotN);
         return { kind: 'dismiss', msg: `<span class="text-amber-300">存檔 ${slotN} 已建立新角色，原隊員 ${cur._allyName} 已解散。</span>${m0 ? ' ' + m0 : ''}` };
     }
@@ -3376,11 +3379,13 @@ function refreshAllyOnce(slotN) {
     if (m === null) m = _settleAllyExp(cur, 'refresh');   // 來源角色正在其他分頁或存檔寫入失敗時，保留帳本保護機制。
     let fresh = buildAlly(slotN);             // 來源存檔不存在／角色不可用時回 null
     if (!fresh) {
+        try { if (typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(cur, false); } catch (e) {}
         player.allies = player.allies.filter(a => a && a._slot !== slotN);
         return { kind: 'dismiss', msg: `<span class="text-amber-300">存檔 ${slotN} 已無可用角色，隊員已解散。</span>${m ? ' ' + m : ''}` };
     }
     if (_pendingAlignment) fresh.alignmentValue = _effectiveAlignment;   // 帳本尚未由來源角色領取前，維持隊伍中已取得的性向效果
     fresh._hiredAt = Number(cur._hiredAt) || 0;   // 🧑‍🤝‍🧑 v3.7.93 重建快照不能重設招募時刻，否則每次進安全區都會把自己的獨佔順位往後推
+    try { if (typeof mercPetLeasePreserve === 'function') mercPetLeasePreserve(fresh, cur); } catch (e) { fresh._mercPetLeaseKey = ''; fresh._mercPetUids = []; }
     let idx = player.allies.findIndex(a => a && a._slot === slotN);
     if (idx !== -1) player.allies[idx] = fresh; else player.allies.push(fresh);
     return { kind: 'refresh', msg: m };
@@ -3392,7 +3397,7 @@ function refreshAllyOnce(slotN) {
 function refreshAllAllies() {
     try {
         let slots = ((player && player.allies) || []).map(a => a && a._slot).filter(s => s != null);
-        if (!slots.length) return 0;
+        if (!slots.length) { try { if (typeof mercPetReconcileLeases === 'function') mercPetReconcileLeases(); } catch (e) {} return 0; }
         let n = 0;
         slots.forEach(s => {
             let r = refreshAllyOnce(s);
@@ -3409,9 +3414,11 @@ function refreshAllAllies() {
             if (!rival || !mercClaimLosesTo(a, rival)) return;
             snapshotMercPrefs(a);
             let m2 = _settleAllyExp(a, 'dismiss');
+            try { if (typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(a, false); } catch (e) {}
             player.allies = player.allies.filter(x => x !== a);
             logSys(`<span class="text-amber-300">${a._allyName || ('存檔 ' + a._slot)} 已受僱於 ${rival.employerName}，同一個角色不能同時受僱於兩位僱主，已自動解散。</span>${m2 ? ' ' + m2 : ''}`);
         });
+        try { if (typeof mercPetReconcileLeases === 'function') mercPetReconcileLeases(); } catch (e) {}
         try { saveGame(); } catch (e) {}
         try { syncMercenaryEmploymentRegistry(true); } catch (e) {}
         if (n > 0) logSys(`<span class="text-sky-300">已依最新存檔更新 ${n} 名隊員的資料。</span>`);
@@ -3611,6 +3618,7 @@ function toggleAlly(slotN) {
         let _dis = player.allies.find(a => a && a._slot === slotN);
         if (_dis) snapshotMercPrefs(_dis);   // 🤝 v3.4.23 解散前記住喝水＋技能設定，供同一角色再次招募時還原
         let _expMsg = _dis ? _settleAllyExp(_dis, 'dismiss') : '';   // 🤝 v2.6.68 解雇＝記一筆待領經驗（帳本制·不直接改寫來源存檔）
+        try { if (_dis && typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(_dis, true); } catch (e) {}
         player.allies = player.allies.filter(a => a && a._slot !== slotN);
         logSys(`協力傭兵（存檔 ${slotN}）已解散。${_expMsg}`);
     } else {
@@ -3638,6 +3646,7 @@ function toggleAlly(slotN) {
             if (!a) { logSys(`<span class="text-red-400">存檔 ${slotN} 沒有可用的角色。</span>`); }
             else {
                 a._hiredAt = Date.now();   // 🧑‍🤝‍🧑 v3.7.93 招募時刻＝獨佔權排序依據（先招募者勝）；refreshAllyOnce 重建快照時必須沿用同一個值
+                try { if (typeof mercPetLeaseAttach === 'function') mercPetLeaseAttach(a); } catch (e) {}
                 player.allies.push(a);
                 logSys(`<span class="text-emerald-300 font-bold">${a._allyName}（存檔 ${slotN}，Lv.${sum.lv}）加入作戰！</span>`);
                 // 🧑‍🤝‍🧑 v3.7.93 多開競態收尾：先寫回存檔讓對手看得見我的宣告，再重讀一次僱傭表；若有人比我更早招募同一角色→我退出。
@@ -3645,7 +3654,9 @@ function toggleAlly(slotN) {
                 try { saveGame(); } catch (e) {}
                 let _rival = mercSlotHiredByOther(slotN);
                 if (_rival && mercClaimLosesTo(a, _rival)) {
+                    try { if (typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(a, true); } catch (e) {}
                     player.allies = player.allies.filter(x => x !== a);
+                    try { saveGame(); } catch (e) {}
                     logSys(`<span class="text-red-400">${a._allyName} 在同一時間已被 ${_rival.employerName} 招募，本次招募取消。</span>`);
                 }
             }
@@ -4110,7 +4121,7 @@ function dismissAllAllies() {
     let n = (player.allies || []).length;
     if (!n) { logSys('<span class="text-slate-400">目前沒有上場的協力傭兵。</span>'); return; }
     if (!confirm(`確定要解除全部 ${n} 名協力傭兵嗎？\n（累積經驗會記入待領帳本，各角色下次載入或回村時領取）`)) return;
-    (player.allies || []).forEach(a => { snapshotMercPrefs(a); let m = _settleAllyExp(a, 'dismiss'); if (m) logSys(m); });   // 🤝 v3.4.23 先記住各傭兵設定 + v2.6.68 各自記一筆待領經驗（帳本制·不直接改寫來源存檔）
+    (player.allies || []).forEach(a => { snapshotMercPrefs(a); let m = _settleAllyExp(a, 'dismiss'); if (m) logSys(m); try { if (typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(a, true); } catch (e) {} });   // 🤝 v3.4.23 先記住各傭兵設定 + v2.6.68 各自記一筆待領經驗（帳本制·不直接改寫來源存檔）
     player.allies = [];
     logSys(`<span class="text-amber-300">已解除全部協力傭兵（共 ${n} 名）。</span>`);
     saveGame(); syncMercenaryEmploymentRegistry(true); updateUI();

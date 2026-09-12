@@ -1480,8 +1480,9 @@ let curCreate = { rawCls: 'm_royal', cls: 'royal', str:0, dex:0, con:0, int:0, w
 
 // 🚫 v3.2.17 舊項圈夥伴 PET_DEF 已移除——新夥伴系統唯一真相＝js/22-pets.js 的 PET_BOOK（39 型態·獨立等級/技能）。
 // 🦴 寵物裝備加成（v3.2.37 個別裝備制）：讀「該寵物」p.eq.wpn 的之牙 → 額外傷害/命中（含強化：每+1 各+1，上限+5）；收集冊/遺物全體加成照舊
-function petGearBonus(p) {
-    let _collHit = (player._equipPetHit || 0);   // 🗡️ 裝備收集冊：寵物裝備部位全收集 → 寵物命中加成（不需裝備之牙也生效）
+function petGearBonus(p, owner) {
+    let _owner = owner || ((typeof petCombatOwner === 'function') ? petCombatOwner(p) : player);
+    let _collHit = (_owner && _owner._equipPetHit != null ? _owner._equipPetHit : (player._equipPetHit || 0));   // 🗡️ 裝備收集冊：寵物裝備部位全收集 → 寵物命中加成（不需裝備之牙也生效）
     // 🏺 遺物「所有寵物額外傷害/命中」：掃玩家＋未倒地傭兵全部裝備欄的 petDmgAll/petHitAll 加總（牧神的放牧棍 傷害+3；食人妖精王的尖刺項圈 傷害/命中各+3；武器/防具/腰帶皆生效）
     // 🩹 v3.2.42 稽核修：範圍與 _relicPetSkillMult（訓狗棒）一致——傭兵持有也生效（原本只掃玩家·同類遺物範圍不一）
     let _allDmg = 0, _allHit = 0;
@@ -2075,7 +2076,7 @@ function isMaxEnhanced(item) { let d = DB.items[item.id]; return !!d && enhancem
 // 🏺 遺物判定（單一真相）：relic:true。維持 wpn/arm/acc 型別（供 equipCatKey 分類·遺物圖鑑）但用此旗標排除 強化/祝福/賦予/潘朵拉，並套海藍色。
 function isRelic(d) { return !!(d && d.relic); }
 // 🏺 遺物「寵物專屬命中」加成：掃玩家所有裝備欄，回傳 partnerHit[petName] 總和；高等進化型同時繼承原型效果。
-function _relicPartnerHit(petName) { if (!petName || typeof player === 'undefined' || !player || !player.eq) return 0; let names = [petName]; if (/^高等/.test(petName)) names.push(petName.replace(/^高等/, '')); let s = 0; for (let k in player.eq) { let e = player.eq[k]; if (!e) continue; let dd = DB.items[e.id]; if (!dd || !dd.partnerHit) continue; for (let n of names) { if (dd.partnerHit[n]) { s += dd.partnerHit[n]; break; } } } return s; }
+function _relicPartnerHit(petName, owner) { owner = owner || player; if (!petName || typeof owner === 'undefined' || !owner || !owner.eq) return 0; let names = [petName]; if (/^高等/.test(petName)) names.push(petName.replace(/^高等/, '')); let s = 0; for (let k in owner.eq) { let e = owner.eq[k]; if (!e) continue; let dd = DB.items[e.id]; if (!dd || !dd.partnerHit) continue; for (let n of names) { if (dd.partnerHit[n]) { s += dd.partnerHit[n]; break; } } } return s; }
 // 🏺 v3.1.80 馴獸師的訓狗棒：隊伍（玩家＋非倒地傭兵）任一人裝備 petSkillDmgMult → 寵物技能傷害 ×N（多件不疊加·取最高）
 function _relicPetSkillMult() {
     let m = 1;

@@ -459,10 +459,10 @@ function _ffAllyProgress(a) {
     return total;
 }
 function _ffPetProgressSum() {
-    if (typeof petsOutList !== 'function' || typeof petExpReq !== 'function') return 0;
+    if (typeof partyPetsOutList !== 'function' || typeof petExpReq !== 'function') return 0;
     let sum = 0;
     try {
-        petsOutList().forEach(p => {
+        partyPetsOutList().forEach(p => {
             let t = Math.max(0, Number(p.exp) || 0);
             for (let n = 1; n < (p.lv || 1); n++) { let r = Number(petExpReq(n)); if (Number.isFinite(r) && r > 0) t += r; }
             sum += t;
@@ -907,7 +907,7 @@ function tick() {
                     : Math.max(1, Math.floor((roll(_h.valDice[0], _h.valDice[1]) + (_h.magicDmg || 0)) * (_h.healMult || 1)));   // 🏺 v3.1.80 治癒者的恢復魔棒：施放者持有 groupHealMult 武器→每跳回復 ×2（施放時快照在 HoT 實例；v3.5.94 欄位更名同步）
                 player.hp = Math.min(player.mhp, player.hp + heal);   // 🔧 水之元氣不套用於持續回復(HoT)
                 _hotAllies.forEach(a => { a.curHp = Math.min(a.mhp || 1, (a.curHp || 0) + heal); });   // 🍃 全體傭兵同步回復
-                try { if (typeof petsOutList === 'function') petsOutList().forEach(p => { if (p && !p._downed && (p.hp || 0) > 0) p.hp = Math.min(p.mhp || 1, (p.hp || 0) + heal); }); } catch (e) {}   // 🩹 v3.2.67 團隊 HoT 也回復出戰寵物
+                try { if (typeof partyPetsOutList === 'function') partyPetsOutList().forEach(p => { if (p && !p._downed && (p.hp || 0) > 0) p.hp = Math.min(typeof petMhpEff === 'function' ? petMhpEff(p) : (p.mhp || 1), (p.hp || 0) + heal); }); } catch (e) {}   // 🩹 v3.2.67 團隊 HoT 也回復隊伍（含傭兵租借）寵物
                 try { if (typeof summonV2List === 'function') summonV2List().forEach(s => { if (s && !s._downed && (s.hp || 0) > 0) s.hp = Math.min(s.mhp || 1, (s.hp || 0) + heal); }); } catch (e) {}   // 🩹 v3.2.67 團隊 HoT 也回復召喚物
                 try { if (typeof mercSummonList === 'function') mercSummonList().forEach(s => { if (s && !s._downed && (s.hp || 0) > 0) s.hp = Math.min(s.mhp || 1, (s.hp || 0) + heal); }); } catch (e) {}   // 🩹 v3.4.71 團隊 HoT 也回復傭兵召喚物
                 try { if (typeof guardAliveList === 'function') guardAliveList().forEach(g => { if (g && !g._downed && (g.hp || 0) > 0) g.hp = Math.min(g.mhp || 1, (g.hp || 0) + heal); }); } catch (e) {}   // 🛡️ v3.8.4 團隊 HoT 也回復城堡護衛

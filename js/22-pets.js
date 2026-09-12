@@ -108,7 +108,8 @@ function _petPowerCurve(def, lv) {
     return { avgAtk: Math.max(1, (g.atk0 + lv * g.atkG) * speedMul * durableMul * skillMul * tierAtk * PET_DMG_TUNE.basic),
         skillFlat: Math.floor(lv * g.skillG * castMul * skillTier * PET_DMG_TUNE.skill) };
 }
-function petDerive(p) {
+function petDerive(p, owner) {
+    owner = owner || petCombatOwner(p) || player;
     let def = PET_BOOK[p.form]; if (!def) return null;
     let g = _PET_G[def.kind], lv = p.lv || 1, t = def.tier || 0;
     let hpAvg = ((def.hpUp && def.hpUp[0]) || 0) / 2 + ((def.hpUp && def.hpUp[1]) || 0) / 2;
@@ -140,8 +141,8 @@ function petDerive(p) {
         attackMult: Math.max(1, def.goldenAtk || 1),
         magicMult: Math.max(1, def.goldenMagic || 1),
         drPierce: Math.max(0, Math.min(0.95, def.drPierce || 0)),
-        damageMult: ((def.goldenAtk || def.goldenMagic) ? 1 : (t === 2 ? 1 : (PET_TIER_DMG_MULT[t] || 1) * survivalDmgMult)) * petMasteryDmgMult(),   // 🦎 四蜥蜴以黃金龍為基準，普攻／魔法各自套用角色倍率；👑 夥伴精通 ×1.5
-        hit: Math.floor((g.hit0 + Math.floor(lv * g.hitG) + speedHit + t * 3 + elite.hit + PET_HIT_TUNE) * petMasteryHitMult()),   // 👑 夥伴精通 ×1.5
+        damageMult: ((def.goldenAtk || def.goldenMagic) ? 1 : (t === 2 ? 1 : (PET_TIER_DMG_MULT[t] || 1) * survivalDmgMult)) * petMasteryDmgMult(owner),   // 🦎 四蜥蜴以黃金龍為基準，普攻／魔法各自套用角色倍率；👑 夥伴精通 ×1.5
+        hit: Math.floor((g.hit0 + Math.floor(lv * g.hitG) + speedHit + t * 3 + elite.hit + PET_HIT_TUNE) * petMasteryHitMult(owner)),   // 👑 夥伴精通 ×1.5
         skillFlat: power.skillFlat + _gInt + (typeof petAuraSum === 'function' ? petAuraSum('petMdmgAll') : 0),   // 🏺 v3.7.20 蜥蜴領主的王冠 +3／珍藏的巨大胡蘿蔔 +1：寵物魔法（技能）傷害光環
         ac: 10 - Math.floor(lv / g.acDiv) - t * g.acTier + hpAc + elite.ac + (def.acMod || 0) - _gAc,
         dr: Math.floor(lv / g.drDiv) + t * g.drTier + hpDr + elite.dr,
@@ -168,19 +169,20 @@ function petMigrateExpReqV3(p) {   // Lv70+ 玩家需求改版時，寵物同樣
     p.expReqV = PET_EXP_REQ_VERSION;
     return true;
 }
-function petCharmCombatBonus() {
+function petCharmCombatBonus(owner) {
     // 🐾 v3.2.24 每一隻獨立計算：移除 /sqrt(出戰隻數) 稀釋——每隻寵物都拿完整魅力加成（隻數多寡不影響個體）
     // 👑 v3.4.28 魅力係數固定 0.10（原「夥伴精通→0.12」已移除·精通效果見下）
-    let cha = Math.max(0, (player && player.d && player.d.cha) || 0);
+    owner = owner || player;
+    let cha = Math.max(0, (owner && owner.d && owner.d.cha) || 0);
     let v = Math.floor(cha * 0.10);
     return { dmg: v, hit: v };
 }
 // 👑 v3.4.36 王族「夥伴精通」(k_royal_pet)（用戶指定）：出戰寵物 傷害 ×1.5、命中 ×1.5、受到傷害 −50%（v3.4.29 為 −30%）。
 //   HP 不再有加成（v3.4.28 的「HP 上限 ×2」已取消·petEffMaxHp 一併移除→各處回頭直接讀存檔值 p.mhp）。
-function petMasteryOn()        { return (typeof hasMastery === 'function') && hasMastery('k_royal_pet'); }
-function petMasteryDmgMult()   { return petMasteryOn() ? 1.5 : 1; }   // 折進 petDerive 的 damageMult＝普攻／傷害技能／extra 技三路徑一次覆蓋
-function petMasteryHitMult()   { return petMasteryOn() ? 1.5 : 1; }   // 折進 petDerive 的 hit＝命中判定（petAttackOnce）與保管清單顯示一次覆蓋
-function petMasteryTakenMult() { return petMasteryOn() ? 0.5 : 1; }   // 受到傷害 −50%：掛怪物普攻／怪物魔法兩處（與 teamDmgReduceMult 同列；DoT 依既有設計為固定真傷·不受任何減免）
+function petMasteryOn(owner)        { owner = owner || player; return !!(owner && owner.mastery === 'k_royal_pet'); }
+function petMasteryDmgMult(owner)   { return petMasteryOn(owner) ? 1.5 : 1; }   // 折進 petDerive 的 damageMult＝普攻／傷害技能／extra 技三路徑一次覆蓋
+function petMasteryHitMult(owner)   { return petMasteryOn(owner) ? 1.5 : 1; }   // 折進 petDerive 的 hit＝命中判定（petAttackOnce）與保管清單顯示一次覆蓋
+function petMasteryTakenMult(owner) { return petMasteryOn(owner) ? 0.5 : 1; }   // 受到傷害 −50%：掛怪物普攻／怪物魔法兩處（與 teamDmgReduceMult 同列；DoT 依既有設計為固定真傷·不受任何減免）
 // 🏺 遺物 馴獸師手做寵物專用盔甲：該寵物裝備的護甲（p.eq.arm）帶 petDmgReduce → 受到傷害 ×(1−petDmgReduce)。與 petMasteryTakenMult 同列乘算。
 function petArmorDmgReduceMult(p) { let a = p && p.eq && p.eq.arm; let d = a ? DB.items[a.id] : null; return (d && d.petDmgReduce) ? Math.max(0, 1 - d.petDmgReduce) : 1; }
 // 🏺 v3.7.20 蜥蜴領主的王冠等「全寵物光環」欄位加總：掃玩家＋未倒地傭兵全部裝備欄（範圍與 petGearBonus 的 petDmgAll 一致）
@@ -240,6 +242,30 @@ function _petOwnerKeyFor(p) {
     return 'char:' + String(p.enSeed);
 }
 function _petCurrentOwnerKey() { return _petOwnerKeyFor(typeof player !== 'undefined' ? player : null); }
+// 🧑‍🤝‍🧑 傭兵寵物租借：寵物本體仍在共用名冊，只把 outOwner 暫時改成穩定的 merc:<僱主 enSeed>:<來源 enSeed>。
+//    這樣來源角色與僱主分頁都能辨識同一筆租借，且不需要複製等級、經驗或裝備資料。
+function _petMercLeaseKeyFor(employer, source) {
+    let ek = _petOwnerKeyFor(employer), sk = _petOwnerKeyFor(source);
+    return ek && sk ? ('merc:' + ek.slice(5) + ':' + sk.slice(5)) : '';
+}
+function _petIsMercLeaseKey(key) { return /^merc:[^:]+:[^:]+$/.test(String(key || '')); }
+function _petMercLeaseParts(key) {
+    let m = /^merc:([^:]+):([^:]+)$/.exec(String(key || ''));
+    return m ? { employer: 'char:' + m[1], source: 'char:' + m[2] } : null;
+}
+function _petSavedRoleByOwnerKey(ownerKey) {
+    if (!ownerKey) return null;
+    if (_petCurrentOwnerKey() === ownerKey) return player;
+    try {
+        for (let i = 1; i <= 8; i++) {
+            let raw = _lzGet('lineage_idle_save_' + i), un = _saveUnwrap(raw);
+            if (!un || !un.ok || !un.payload) continue;
+            let p = JSON.parse(un.payload).p;
+            if (_petOwnerKeyFor(p) === ownerKey) return p;
+        }
+    } catch (e) {}
+    return null;
+}
 function _petOutStateKey(p) {
     if (!p) return '';
     if (p.outOwner) return String(p.outOwner);
@@ -456,6 +482,34 @@ window.addEventListener('storage', ev => {
 });
 
 function petsOutList() { let owner = _petCurrentOwnerKey(); return owner ? petRoster().filter(p => String(p.outOwner || '') === owner) : []; }
+// 🧑‍🤝‍🧑 隊伍寵物查詢：petsOutList 刻意只保留「目前操作角色自己的寵物」，供保管／出戰介面使用；
+//    戰鬥、治療與隊伍面板則必須另外納入目前傭兵借來的寵物。
+function partyPetEntries() {
+    let list = petRoster(), out = [], seen = {};
+    let owner = _petCurrentOwnerKey();
+    if (owner) list.forEach(p => {
+        if (p && String(p.outOwner || '') === owner && !seen[p.uid]) { seen[p.uid] = 1; out.push({ pet: p, owner: player, ally: null, leaseKey: owner }); }
+    });
+    (player && player.allies || []).forEach(a => {
+        let key = String(a && a._mercPetLeaseKey || ''), ids = Array.isArray(a && a._mercPetUids) ? a._mercPetUids : [];
+        if (!key || !ids.length) return;
+        let wanted = {}; ids.forEach(u => { wanted[String(u)] = 1; });
+        list.forEach(p => {
+            if (p && wanted[String(p.uid)] && String(p.outOwner || '') === key && !seen[p.uid]) {
+                seen[p.uid] = 1; out.push({ pet: p, owner: a, ally: a, leaseKey: key });
+            }
+        });
+    });
+    return out;
+}
+function partyPetsOutList() { return partyPetEntries().map(x => x.pet); }
+function partyPetEntry(uidv) { return partyPetEntries().find(x => x.pet && String(x.pet.uid) === String(uidv)) || null; }
+function petCombatOwner(p) {
+    let x = partyPetEntries().find(e => e.pet === p || (e.pet && p && e.pet.uid === p.uid));
+    if (x) return x.owner;
+    let key = _petOutStateKey(p), parts = _petMercLeaseParts(key), source = parts ? parts.source : key;
+    return _petSavedRoleByOwnerKey(source) || player;
+}
 function petChaUsed() { return petsOutList().reduce((s, p) => s + ((PET_BOOK[p.form] || {}).cha || 6), 0); }
 function _petEnforceCarry() {   // 換角色載入：魅力不足/超過4隻→自動收回超出的
     let out = petsOutList();
@@ -534,15 +588,169 @@ function petReleaseSlotAssignments(slot) {
         let dirty = false;
         list.forEach(p => {
             if (!p) return;
-            let owned = owner && String(p.outOwner || '') === owner;
+            let outKey = String(p.outOwner || '');
+            let owned = owner && outKey === owner;
+            // 來源角色被刪除／重建時，連同仍掛在其他僱主名下的租借寵物一併解除，
+            // 否則新角色永遠看見「其他角色使用中」。這裡不歸還 source key，因為來源角色已不存在。
+            let sourceLease = owner && _petIsMercLeaseKey(outKey) && _petMercLeaseParts(outKey) && _petMercLeaseParts(outKey).source === owner;
             let legacy = !p.outOwner && p.outSlot != null && String(p.outSlot) === legacyOwner;
-            if (owned || legacy) { p.outOwner = null; p.outSlot = null; p.outV = _petNowStamp(); dirty = true; }
+            if (owned || sourceLease || legacy) { p.outOwner = null; p.outSlot = null; p.outV = _petNowStamp(); dirty = true; }
         });
         if (!dirty) continue;
         let old = _lzGet(key); if (old != null) _lzSet(key + '_bak', old);
         if (_lzSet(key, _saveWrap(JSON.stringify(list.map(_petPersist))))) changed = true;
     }
     if (changed) _petRosterKey = null;
+    return changed;
+}
+
+function _petRoleOwnerExists(ownerKey) {
+    if (!ownerKey) return false;
+    if (_petCurrentOwnerKey() === ownerKey) return true;
+    try {
+        for (let i = 1; i <= 8; i++) {
+            let raw = _lzGet('lineage_idle_save_' + i), un = _saveUnwrap(raw);
+            if (!un || !un.ok || !un.payload) continue;
+            let d = JSON.parse(un.payload), p = d && d.p;
+            if (_petOwnerKeyFor(p) === ownerKey) return true;
+        }
+    } catch (e) {}
+    return false;
+}
+function _petSourceStillExists(ally, sourceKey) {
+    if (!ally || !sourceKey) return false;
+    try {
+        let raw = _lzGet('lineage_idle_save_' + ally._slot), un = _saveUnwrap(raw);
+        if (un && un.ok && un.payload) return _petOwnerKeyFor(JSON.parse(un.payload).p) === sourceKey;
+    } catch (e) {}
+    return false;
+}
+function _petWriteLeaseBucket(key, list) {
+    try {
+        let old = _lzGet(key); if (old != null) _lzSet(key + '_bak', old);
+        return !!_lzSet(key, _saveWrap(JSON.stringify(list.map(_petPersist))));
+    } catch (e) { return false; }
+}
+function _petMutateLeaseBuckets(mutator) {
+    let changed = false;
+    for (let key of [PET_ROSTER_KEY, PET_ROSTER_KEY + '_classic']) {
+        let list = _petRosterRead(key); if (!Array.isArray(list) || !list.length) continue;
+        let dirty = !!mutator(list, key);
+        if (dirty && _petWriteLeaseBucket(key, list)) changed = true;
+    }
+    if (changed) _petRosterKey = null;
+    return changed;
+}
+// 招募時把來源角色目前 outOwner=char:<source> 的寵物改掛到本名單；不複製寵物本體。
+function mercPetLeaseAttach(ally) {
+    if (!ally || !player || !player.cls) return false;
+    let key = _petMercLeaseKeyFor(player, ally), sourceKey = _petOwnerKeyFor(ally);
+    ally._mercPetLeaseKey = key || '';
+    ally._mercPetUids = [];
+    if (!key || !sourceKey) return true;
+    let candidates = petRoster().filter(p => p && String(p.outOwner || '') === sourceKey).slice(0, PET_CARRY_MAX);
+    candidates.forEach(p => {
+        p.outOwner = key; p.outSlot = null; p.outV = _petNowStamp();
+        ally._mercPetUids.push(String(p.uid));
+    });
+    if (candidates.length) petMarkDirty();
+    return true;
+}
+// 傭兵刷新重建快照時沿用原租借清單；舊版沒有租借欄位則在此補接來源當下出戰寵物。
+function mercPetLeasePreserve(fresh, old) {
+    if (!fresh) return false;
+    let key = String(old && old._mercPetLeaseKey || ''), ids = Array.isArray(old && old._mercPetUids) ? old._mercPetUids : [];
+    // 有欄位但清單為空代表招募當下來源沒有出戰寵物，刷新不能把後來新部署的寵物偷偷加入；
+    // 只有完全沒有新欄位的舊傭兵快照才補做一次租借。
+    if (old && (old._mercPetLeaseKey !== undefined || Array.isArray(old._mercPetUids))) {
+        fresh._mercPetLeaseKey = key;
+        fresh._mercPetUids = ids.map(String);
+        return true;
+    }
+    return mercPetLeaseAttach(fresh);
+}
+function mercPetLeaseRelease(ally, restoreSource) {
+    if (!ally) return false;
+    // 先把目前分頁的 HP／EXP／倒地狀態寫入共用桶，再改變租借歸屬，避免解散瞬間回讀舊鏡像而覆蓋戰鬥進度。
+    try { if (_petRosterDirty) petRosterSave(); } catch (e) {}
+    let key = String(ally._mercPetLeaseKey || ''), sourceKey = _petOwnerKeyFor(ally);
+    if (!key || !_petIsMercLeaseKey(key)) { ally._mercPetLeaseKey = ''; ally._mercPetUids = []; return false; }
+    let restore = restoreSource !== false && _petSourceStillExists(ally, sourceKey);
+    let ids = {}; (Array.isArray(ally._mercPetUids) ? ally._mercPetUids : []).forEach(u => { ids[String(u)] = 1; });
+    let changed = _petMutateLeaseBuckets(list => {
+        let dirty = false;
+        list.forEach(p => {
+            if (p && ids[p.uid] && String(p.outOwner || '') === key) {
+                p.outOwner = restore ? sourceKey : null; p.outSlot = null; p.outV = _petNowStamp(); dirty = true;
+            }
+        });
+        return dirty;
+    });
+    ally._mercPetLeaseKey = ''; ally._mercPetUids = [];
+    return changed;
+}
+// 僱主角色刪除／重建時解除它名下的全部租借；有來源角色則歸還來源，來源也不存在才回保管。
+function mercPetReleaseForEmployer(employer) {
+    let employerKey = _petOwnerKeyFor(employer), active = {};
+    if (!employerKey) return false;
+    (employer.allies || []).forEach(a => {
+        let key = String(a && a._mercPetLeaseKey || '');
+        if (key && _petIsMercLeaseKey(key)) { active[key] = 1; mercPetLeaseRelease(a, true); }
+    });
+    let changed = _petMutateLeaseBuckets(list => {
+        let dirty = false;
+        list.forEach(p => {
+            let key = String(p && p.outOwner || ''), parts = _petMercLeaseParts(key);
+            if (!parts || parts.employer !== employerKey || active[key]) return;
+            let restore = _petRoleOwnerExists(parts.source);
+            p.outOwner = restore ? parts.source : null; p.outSlot = null; p.outV = _petNowStamp(); dirty = true;
+        });
+        return dirty;
+    });
+    return changed;
+}
+// 載入／進安全區的收斂：只保留仍存在的僱主、來源與傭兵快照所宣告的租借，清掉關頁／刪角留下的孤兒。
+function mercPetReconcileLeases() {
+    // 先落地目前分頁尚未保存的 HP／EXP／倒地與剛建立的租借，否則下面直接掃描共用桶時，
+    // 可能只修到磁碟副本，留下目前鏡像仍持有已失效的 merc:* outOwner。
+    try { if (_petRosterDirty) petRosterSave(); } catch (e) {}
+    let valid = {}, leaseUid = {}, roles = [];
+    if (player && player.cls) roles.push(player);
+    try {
+        for (let i = 1; i <= 8; i++) {
+            let raw = _lzGet('lineage_idle_save_' + i), un = _saveUnwrap(raw);
+            if (un && un.ok && un.payload) { let p = JSON.parse(un.payload).p; if (p && p.cls) roles.push(p); }
+        }
+    } catch (e) {}
+    roles.forEach(employer => {
+        let ek = _petOwnerKeyFor(employer); if (!ek) return;
+        (employer.allies || []).forEach(a => {
+            let key = String(a && a._mercPetLeaseKey || ''), parts = _petMercLeaseParts(key);
+            if (parts && parts.employer === ek && _petRoleOwnerExists(parts.source)) {
+                valid[key] = 1;
+                (Array.isArray(a._mercPetUids) ? a._mercPetUids : []).forEach(u => { leaseUid[String(u)] = key; });
+            }
+        });
+    });
+    let changed = _petMutateLeaseBuckets(list => {
+        let dirty = false;
+        list.forEach(p => {
+            let key = String(p && p.outOwner || ''), parts = _petMercLeaseParts(key);
+            // 僱主存檔已宣告租借、但上一輪只成功寫入其中一個儲存桶時，依 uid 補完成轉交。
+            // 只有寵物仍停在來源 owner 才能補接，絕不從另一個現有僱主手上搶寵物。
+            let expected = p && leaseUid[String(p.uid)], expectedParts = _petMercLeaseParts(expected);
+            if (expected && expectedParts && key === expectedParts.source) {
+                p.outOwner = expected; p.outSlot = null; p.outV = _petNowStamp(); dirty = true; return;
+            }
+            if (!parts || valid[key]) return;
+            let restore = _petRoleOwnerExists(parts.source);
+            p.outOwner = restore ? parts.source : null; p.outSlot = null; p.outV = _petNowStamp(); dirty = true;
+        });
+        return dirty;
+    });
+    (player && player.allies || []).forEach(a => {
+        if (a && a._mercPetLeaseKey && !valid[String(a._mercPetLeaseKey)]) { a._mercPetLeaseKey = ''; a._mercPetUids = []; }
+    });
     return changed;
 }
 
@@ -723,7 +931,12 @@ function petEvoChoose(p, avail) {   // 🐉 v3.2.63 兩種果實都有時的進�
     document.body.appendChild(ov);
 }
 function petDisplayName(p) { return (p.name ? p.name + '（' + p.form + '）' : p.form); }
-function petSetPotPct(uidv, v) { let p = _petFindFresh(uidv); if (!p || _petRejectForeignMutation(p)) return; p.potPct = Math.max(0, Math.min(95, parseInt(v, 10) || 0)); petMarkDirty(); }
+function petSetPotPct(uidv, v) {
+    let p = _petFindFresh(uidv); if (!p) return;
+    // 隊伍面板可調整傭兵租借寵物的喝水門檻；保管／裝備／進化仍由來源角色管理。
+    if (!partyPetEntry(uidv) && _petRejectForeignMutation(p)) return;
+    p.potPct = Math.max(0, Math.min(95, parseInt(v, 10) || 0)); petMarkDirty();
+}
 
 // ---------- 五之二、寵物個別裝備（v3.2.37：武器 slot:petwpn／防具 slot:petarm·裝備存在寵物身上 p.eq={wpn,arm}·共用桶隨寵物走）----------
 const PET_GEAR_SLOT = { wpn: { slot: 'petwpn', n: '寵物武器' }, arm: { slot: 'petarm', n: '寵物防具' } };
@@ -810,19 +1023,19 @@ function petGearUnequip(uidv, key) {
 // ---------- 六、經驗（每隻未倒地出戰寵物各得玩家完整份額·需求=玩家1/10；玩家滿等仍可養寵）----------
 function petsGainExp(playerGain) {
     if (!(playerGain > 0)) return;
-    let outs = petsOutList().filter(p => !p._downed);
-    if (!outs.length) return;
-    let _cap = Math.min(100, (player.lv || 1));   // 🐾 v3.2.40 用戶指定：寵物等級不得超過玩家等級（達上限比照 Lv100 不累積經驗·玩家升級後恢復成長）
-    outs.forEach(p => { if ((p.lv || 1) >= _cap) p.exp = 0; });   // 滿等者不囤經驗（原規則）
+    let entries = partyPetEntries().filter(x => x.pet && !x.pet._downed);
+    if (!entries.length) return;
+    entries.forEach(x => { let cap = Math.min(100, (x.owner && x.owner.lv) || 1); if ((x.pet.lv || 1) >= cap) x.pet.exp = 0; });   // 🐾 寵物等級上限跟隨各自來源角色（傭兵不誤讀隊長等級）
     // 🐾 v3.7.62 經驗不再由寵物平分：每隻未滿等且未倒地的出戰寵物都拿完整份額。
-    let elig = outs.filter(p => (p.lv || 1) < _cap);
+    let elig = entries.filter(x => (x.pet.lv || 1) < Math.min(100, (x.owner && x.owner.lv) || 1));
     if (!elig.length) { petMarkDirty(); return; }
     let each = Math.floor(playerGain);
     if (each <= 0) return;
-    elig.forEach(p => {
+    elig.forEach(x => {
+        let p = x.pet, cap = Math.min(100, (x.owner && x.owner.lv) || 1);
         p.exp = (p.exp || 0) + each;
         let up = 0;
-        while (p.lv < _cap && p.exp >= petExpReq(p.lv)) {
+        while (p.lv < cap && p.exp >= petExpReq(p.lv)) {
             p.exp -= petExpReq(p.lv);
             p.lv++; up++;
             let def = PET_BOOK[p.form];
@@ -830,7 +1043,7 @@ function petsGainExp(playerGain) {
             let mg = def.mpUp[0] + Math.floor(lootRng('petMp') * (def.mpUp[1] - def.mpUp[0] + 1));
             p.mhp += hg; p.mmp += mg; p.hp += hg; p.mp += mg;
         }
-        if (p.lv >= _cap) p.exp = 0;
+        if (p.lv >= cap) p.exp = 0;
         if (up > 0) { logCombat(`<span class="text-yellow-300 font-bold">寵物 ${petDisplayName(p)} 升級了！目前 Lv.${p.lv}</span>`, 'player-special'); petMarkDirty(); try { renderSquadPanel(); } catch (e) {} }
     });
     petMarkDirty();
@@ -846,18 +1059,19 @@ function _petInWild() {   // 狩獵區判定：該圖有出怪池（村莊/安�
     } catch (e) { return false; }
 }
 function petsTick() {
-    let outs = petsOutList();
-    if (!outs.length) return;
+    let entries = partyPetEntries();
+    if (!entries.length) return;
     let wild = _petInWild();
-    outs.forEach(p => {
-        let d = petDerive(p); if (!d) return;
+    entries.forEach(x => {
+        let p = x.pet, owner = x.owner;
+        let d = petDerive(p, owner); if (!d) return;
         // 倒地：非野外（安全區）免費復活；野外等 5 秒復活卷軸
         if (p._downed) {
-            if (!wild) { _petReviveDone(p, '安全區'); return; }
+            if (!wild) { _petReviveDone(p, '安全區', owner); return; }
             p._reviveCd = (p._reviveCd || 0) - 1;
             if (p._reviveCd <= 0 || (typeof playerHasAutoReviveEarring === 'function' && playerHasAutoReviveEarring())) {   // 🏺 巨靈的承諾耳環：跳過冷卻立即復活（仍消耗卷軸）
                 let sc = player.inv.find(i => i.id === 'scroll_revive' && (i.cnt || 0) > 0);
-                if (sc) { sc.cnt--; if (sc.cnt <= 0) player.inv = player.inv.filter(i => i.uid !== sc.uid); _petReviveDone(p, '復活卷軸（自動）'); }
+                if (sc) { sc.cnt--; if (sc.cnt <= 0) player.inv = player.inv.filter(i => i.uid !== sc.uid); _petReviveDone(p, '復活卷軸（自動）', owner); }
             }
             return;
         }
@@ -871,7 +1085,7 @@ function petsTick() {
             if (p.mp < _mmpEff && ((def.mpReg || 0) + (d.mpRegBonus || 0) > 0)) p.mp = Math.min(_mmpEff, p.mp + (def.mpReg || 0) + (d.mpRegBonus || 0));
         }
         // HP<X% 喝隊長的治癒藥水（邏輯同傭兵：讀 #set-pot 藥水·缺貨可自動補貨）
-        petTryPotion(p);
+        petTryPotion(p, owner);
         if (!wild || player.dead) return;
         let pst = p._statuses || {};
         if ((pst.freeze || 0) > 0 || (pst.stun || 0) > 0 || (pst.stone || 0) > 0 || (pst.sleep || 0) > 0 || (pst.paralyze || 0) > 0) return;
@@ -941,14 +1155,15 @@ function _petPickTarget(p) {
 }
 function petAttackOnce(p, d, target, forceCrit, addDmg, skName) {
     if (!target || target.curHp <= 0) return;
+    let owner = petCombatOwner(p);
     _combatSrc = 'pet';
     let _snap = (typeof _dpsSnap === 'function') ? _dpsSnap() : null;
     try {
-        let pg = (typeof petGearBonus === 'function') ? petGearBonus(p) : { dmg: 0, hit: 0 };   // 🦴 v3.2.37 讀該寵物自身的武器（p.eq.wpn）
-        let cb = petCharmCombatBonus();
+        let pg = (typeof petGearBonus === 'function') ? petGearBonus(p, owner) : { dmg: 0, hit: 0 };   // 🦴 v3.2.37 讀該寵物自身的武器（p.eq.wpn）
+        let cb = petCharmCombatBonus(owner);
         let _ia = (typeof teamIlluAura === 'function') ? teamIlluAura(p, true) : null;   // 🩹 v3.2.67 幻覺攻擊光環（化身+10傷／歐吉+4傷+4命）全隊生效→注入出戰寵物普攻
         let _pst = p._statuses || {};
-        let rawHit = p.lv + d.hit + cb.hit + pg.hit + (_ia ? _ia.eh : 0) - target.lv + mobEffAC(target) + (typeof _relicPartnerHit === 'function' ? _relicPartnerHit(p.form) : 0) - (_pst.weaken > 0 ? 2 : 0) - (_pst.disease > 0 ? 4 : 0) - (_pst.blind > 0 ? 6 : 0);
+        let rawHit = p.lv + d.hit + cb.hit + pg.hit + (_ia ? _ia.eh : 0) - target.lv + mobEffAC(target) + (typeof _relicPartnerHit === 'function' ? _relicPartnerHit(p.form, owner) : 0) - (_pst.weaken > 0 ? 2 : 0) - (_pst.disease > 0 ? 4 : 0) - (_pst.blind > 0 ? 6 : 0);
         let hv = stretchHitValue(rawHit);
         let r = roll(1, 20);
         let heavy = (r === 20) || !!forceCrit;
@@ -977,8 +1192,9 @@ function petAttackOnce(p, d, target, forceCrit, addDmg, skName) {
     _combatSrc = null;
 }
 function petDebuffChance(p, d, target, sk) {
+    let owner = petCombatOwner(p);
     let effMr = (target.st && target.st.mrhalf > 0) ? Math.floor((target.mr || 0) / 2) : (target.mr || 0);
-    let ch = (sk.acc || 50) + d.tier * 8 + ((p.lv || 1) - (target.lv || 1)) * 0.5 - effMr * 0.35 + petCharmCombatBonus().hit * 0.5 - (target.boss ? 10 : 0);
+    let ch = (sk.acc || 50) + d.tier * 8 + ((p.lv || 1) - (target.lv || 1)) * 0.5 - effMr * 0.35 + petCharmCombatBonus(owner).hit * 0.5 - (target.boss ? 10 : 0);
     return _petClamp(ch, 5, 90);
 }
 function petCastSkill(p, d, target) {
@@ -1071,7 +1287,7 @@ function enemyAttackPet(mob, p) {
     if (!mob || mob.curHp <= 0 || !p || p._downed || (p.hp || 0) <= 0) return;
     if (typeof _mobAnimTrigger === 'function') _mobAnimTrigger(mob, 'attack');
     mob._facePartyKey = null; delete mob._faceTgt;   // 面向寵物暫不支援（寵物位置動態）→ 用預設
-    let d = petDerive(p); if (!d) return;
+    let owner = petCombatOwner(p), d = petDerive(p, owner); if (!d) return;
     // ER 迴避
     if (roll(1, 100) <= effResistPct(d.er)) { logCombat(`寵物 <span class="text-sky-300 font-bold">${p.form}</span> 迴避了 <span class="${getMobColor(mob.lv)}">${mob.n}</span> 的攻擊。`, 'evade', 'enemy'); return; }
     let st = mob.st || newMobStatus();
@@ -1087,7 +1303,7 @@ function enemyAttackPet(mob, p) {
     if (mob._sherine) dmg = Math.floor(dmg * (mob._sherineMad ? 3 : 2));
     if (mob._grace) dmg = Math.floor(dmg * 1.5);
     dmg -= (d.dr || 0) + petRandomPhysicalDr(p, d) + petHardenDr(p);
-    dmg = Math.floor(Math.max(1, dmg) * (typeof teamDmgReduceMult === 'function' ? teamDmgReduceMult(true) : 1) * petMasteryTakenMult() * petArmorDmgReduceMult(p));   // 👑 夥伴精通：受到傷害 −50%；🏺 寵物專用盔甲：受傷 ×(1−petDmgReduce)
+    dmg = Math.floor(Math.max(1, dmg) * (typeof teamDmgReduceMult === 'function' ? teamDmgReduceMult(true) : 1) * petMasteryTakenMult(owner) * petArmorDmgReduceMult(p));   // 👑 夥伴精通：依寵物來源角色受到傷害 −50%；🏺 寵物專用盔甲：受傷 ×(1−petDmgReduce)
     if (typeof ironGuardTauntWeakensAttack === 'function' && ironGuardTauntWeakensAttack(mob)) dmg = Math.floor(dmg * 0.9);   // 🔮 鐵衛 5/5：受嘲諷目標的一般攻擊傷害 -10%
     dmg = Math.max(1, Math.floor(dmg * riftDamageMult()));
     if (petDevotionGuardOn(p)) dmg = 0;   // 🏺 v3.6.44 珍愛夥伴的執念：復活後 8 秒受到傷害 −100%
@@ -1102,7 +1318,7 @@ function enemyAttackPet(mob, p) {
 }
 function applyMobMagicToPet(mob, sk, p) {
     if (!mob || mob.curHp <= 0 || !sk || !p || p._downed || (p.hp || 0) <= 0) return;
-    let d = petDerive(p); if (!d) return;
+    let owner = petCombatOwner(p), d = petDerive(p, owner); if (!d) return;
     let st = p._statuses || (p._statuses = newMobStatus());
     let mr = d.mr || 0, nm = '寵物·' + p.form;
     let shMul = (mob._sherine ? (mob._sherineMad ? 3 : 2) : 1) * (mob._grace ? 2 : 1);
@@ -1130,7 +1346,7 @@ function applyMobMagicToPet(mob, sk, p) {
     let extra = (sk.db || 0) + (sk.dbLv ? (mob.lv || 0) * (sk.dbLvMult || 1) : 0);
     let dmg = sk.fixedDmg ? (baseM + extra) : (Math.floor((baseM + extra) * mrMult(mr)) - (d.dr || 0) - petHardenDr(p));
     if (st.freeze > 0 && sk.ext_freeze) { dmg += sk.ext_freeze; if (sk.extUnfreeze) st.freeze = 0; }
-    dmg = Math.max(1, Math.floor(Math.max(1, dmg * shMul) * (typeof teamDmgReduceMult === 'function' ? teamDmgReduceMult(true) : 1) * petMasteryTakenMult() * petArmorDmgReduceMult(p)));   // 👑 夥伴精通：受到傷害 −50%；🏺 寵物專用盔甲：受傷 ×(1−petDmgReduce)
+    dmg = Math.max(1, Math.floor(Math.max(1, dmg * shMul) * (typeof teamDmgReduceMult === 'function' ? teamDmgReduceMult(true) : 1) * petMasteryTakenMult(owner) * petArmorDmgReduceMult(p)));   // 👑 夥伴精通：依寵物來源角色受到傷害 −50%；🏺 寵物專用盔甲：受傷 ×(1−petDmgReduce)
     dmg = Math.max(1, Math.floor(dmg * riftDamageMult()));
     if (petDevotionGuardOn(p)) dmg = 0;   // 🏺 v3.6.44 珍愛夥伴的執念：復活後 8 秒受到傷害 −100%（魔法亦免）
     p.hp -= dmg; _petAnimAct(p, 'hurt');
@@ -1152,7 +1368,7 @@ function applyMobMagicToPet(mob, sk, p) {
     if (p.hp <= 0) _petDown(p);
     petMarkDirty();
 }
-function petTryPotion(p) {   // HP<X% 用治癒藥水（邏輯同傭兵 allyTryPotion：喝「隊長設定的藥水」·缺貨且勾自動購買→補到100瓶）
+function petTryPotion(p, owner) {   // HP<X% 用治癒藥水（藥水／金幣仍由隊長提供；寵物來源角色提供 CON 加成）
     if (typeof pvpArenaPotionBlocked === 'function' && pvpArenaPotionBlocked()) return;   // 🚫 v3.7.17 決鬥中禁治癒藥水（⚠️寵物不像傭兵會被移到場邊·決鬥時仍在場上→這道閘是真的會擋到東西的那一個）
     if (!(p.potPct > 0) || p._downed) return;
     if ((p._potCd || 0) > 0) { p._potCd--; return; }
@@ -1175,7 +1391,8 @@ function petTryPotion(p) {   // HP<X% 用治癒藥水（邏輯同傭兵 allyTryP
         if (!stack) return;
     }
     stack.cnt--; if (stack.cnt <= 0) player.inv = player.inv.filter(i => i.uid !== stack.uid);   // 🛡️ v3.2.42 稽核修：只移除喝空的那疊（原全背包 filter 會誤刪 cnt 為 undefined 的舊物品）
-    let h = Math.max(1, Math.floor(potionHealBase(pdef) * (1 + getConPotionPct((player.d && player.d.con) || 0) / 100)));
+    owner = owner || petCombatOwner(p);
+    let h = Math.max(1, Math.floor(potionHealBase(pdef) * (1 + getConPotionPct((owner && owner.d && owner.d.con) || 0) / 100)));
     if (p._statuses && p._statuses.potionFrost > 0) h = Math.max(1, Math.floor(h * 0.5));   // 🌅 藥水霜化：寵物也以自己的 MR/狀態判定，不再借用主角色結果
     if (p._statuses && p._statuses.foulWater > 0) h = Math.max(1, Math.floor(h * 0.5));   // 🌊 v3.6.20 汙濁之水：治癒藥水也減半
     p.hp = Math.min(petMhpEff(p), p.hp + h);
@@ -1183,33 +1400,36 @@ function petTryPotion(p) {   // HP<X% 用治癒藥水（邏輯同傭兵 allyTryP
     logCombat(`寵物 <span class="text-emerald-300 font-bold">${p.form}</span> 飲用 ${pdef.n}，恢復 ${h} 點 HP。`, 'heal');
     petMarkDirty();
 }
-function _petReviveDone(p, via) {
+function _petReviveDone(p, via, owner) {
+    owner = owner || petCombatOwner(p);
     p._downed = false; p._reviveCd = 0;
-    p.hp = Math.max(1, Math.floor(petMhpEff(p) * 0.5)); p.mp = p.mmp + (((typeof petDerive === 'function' && petDerive(p)) || {}).mmpBonus || 0);   // 🦴 v3.2.42 稽核修：復活 MP 補到含防具精神加成的有效上限（與 petsTick _mmpEff 一致）
+    p.hp = Math.max(1, Math.floor(petMhpEff(p) * 0.5)); p.mp = p.mmp + (((typeof petDerive === 'function' && petDerive(p, owner)) || {}).mmpBonus || 0);   // 🦴 v3.2.42 稽核修：復活 MP 補到含防具精神加成的有效上限（與 petsTick _mmpEff 一致）
     p._animAct = null; p._statuses = newMobStatus();
     logCombat(`<span class="text-green-300 font-bold">寵物 ${p.form} 復活了！</span>（${via}）`, 'heal');
-    petDevotionGrant(p);   // 🏺 v3.6.44 珍愛夥伴的執念：復活後 8 秒受傷 −100%＋額外傷害 +8
+    petDevotionGrant(p, owner);   // 🏺 v3.6.44 珍愛夥伴的執念：復活後 8 秒受傷 −100%＋額外傷害 +8
     petMarkDirty();
     try { renderSquadPanel(); } catch (e) {}
 }
 // 🏺 v3.6.44 珍愛夥伴的執念（relic_pet_devotion·項鍊）：寵物復活後 8 秒——受到傷害 −100%（物理/魔法皆免）＋一般攻擊額外傷害 +8（runtime 欄位不入桶）
-function petDevotionGrant(p) {
-    if (!(player && player.eq && player.eq.amulet && (DB.items[player.eq.amulet.id] || {}).petReviveBuff)) return;
+function petDevotionGrant(p, owner) {
+    owner = owner || petCombatOwner(p);
+    if (!(owner && owner.eq && owner.eq.amulet && (DB.items[owner.eq.amulet.id] || {}).petReviveBuff)) return;
     p._reviveGuardUntil = ((typeof state !== 'undefined' && state.ticks) || 0) + 80;
     logCombat(`<span class="font-bold text-pink-300">【珍愛夥伴的執念】</span>守護 ${p.form}：8 秒內受到傷害 −100%、額外傷害 +8。`, 'player-special');
 }
 function petDevotionGuardOn(p) { return !!(p && (p._reviveGuardUntil || 0) > (((typeof state !== 'undefined' && state.ticks) || 0))); }
 // 🐾 v3.6.29 回村/回城（js/11 changeMap 村莊分支呼叫·比照傭兵 reviveDownedMercsAtTown）：
 //    出戰寵物倒地者免費復活＋全體補滿 HP/MP（MP 含防具精神加成的有效上限·同 petsTick _mmpEff）＋清異常狀態。
-//    petsOutList 已依目前角色過濾——他角色出戰中的寵物不動（多分頁共用桶慣例）。
+//    partyPetEntries 已依目前隊伍過濾——其他角色出戰中的寵物不動（多分頁共用桶慣例）。
 function petsReviveAtTown() {
-    let outs = (typeof petsOutList === 'function') ? petsOutList() : [];
-    if (!outs.length) return;
+    let entries = (typeof partyPetEntries === 'function') ? partyPetEntries() : [];
+    if (!entries.length) return;
     let n = 0;
-    outs.forEach(p => {
-        if (p._downed) { p._downed = false; p._reviveCd = 0; p._animAct = null; n++; petDevotionGrant(p); }   // 🏺 v3.6.44 回村復活亦觸發珍愛夥伴 buff
+    entries.forEach(x => {
+        let p = x.pet, owner = x.owner;
+        if (p._downed) { p._downed = false; p._reviveCd = 0; p._animAct = null; n++; petDevotionGrant(p, owner); }   // 🏺 v3.6.44 回村復活亦觸發珍愛夥伴 buff
         p.hp = petMhpEff(p);   // 🏺 v3.7.20 回村補滿含 petHpAll 光環
-        p.mp = (p.mmp || 0) + (((typeof petDerive === 'function' && petDerive(p)) || {}).mmpBonus || 0);
+        p.mp = (p.mmp || 0) + (((typeof petDerive === 'function' && petDerive(p, owner)) || {}).mmpBonus || 0);
         p._statuses = newMobStatus();
     });
     petMarkDirty();
@@ -1217,7 +1437,9 @@ function petsReviveAtTown() {
     try { renderSquadPanel(); } catch (e) {}
 }
 function petRevive(uidv, method) {   // 隊伍面板按鈕：rez=返生術（立即·耗玩家MP）/ scroll=復活卷軸（需滿 5 秒·_petDown 設 _reviveCd=50 tick）
-    let p = _petFind(uidv); if (!p || !p._downed) return;
+    try { _petRosterResync(); } catch (e) {}
+    let entry = partyPetEntry(uidv), p = entry && entry.pet, owner = entry && entry.owner;
+    if (!p || !p._downed) return;
     if (method === 'rez') {
         if (!(player.skills || []).includes('sk_resurrection')) { logSys('<span class="text-red-400">你尚未習得 返生術。</span>'); return; }
         // 🪄 v3.5.88 修：原呼叫不存在的裸函式 getMpCost(技能物件)→typeof 守衛永遠不成立→固定收硬編 50，
@@ -1227,13 +1449,13 @@ function petRevive(uidv, method) {   // 隊伍面板按鈕：rez=返生術（立
         let cost = (player.d && typeof player.d.getMpCost === 'function' && _rk) ? player.d.getMpCost(_rk.mp, _rk.tier) : 50;
         if (player.mp < cost) { logSys('<span class="text-red-400">MP 不足，無法施放返生術。</span>'); return; }
         player.mp -= cost;
-        _petReviveDone(p, '返生術');
+        _petReviveDone(p, '返生術', owner);
     } else {
         if ((p._reviveCd || 0) > 0) { logSys(`<span class="text-red-400">復活卷軸尚需 ${Math.ceil(p._reviveCd / 10)} 秒才能對 ${p.form} 生效。</span>`); return; }
         let sc = player.inv.find(i => i.id === 'scroll_revive' && (i.cnt || 0) > 0);
         if (!sc) { logSys('<span class="text-red-400">身上沒有復活卷軸。</span>'); return; }
         sc.cnt--; if (sc.cnt <= 0) player.inv = player.inv.filter(i => i.uid !== sc.uid);
-        _petReviveDone(p, '復活卷軸');
+        _petReviveDone(p, '復活卷軸', owner);
     }
 }
 
@@ -1276,6 +1498,7 @@ function renderPetStorageNPC(div, confirmUid) {
         let expPct = Math.min(100, Math.floor((p.exp || 0) / petExpReq(p.lv) * 100));
         let isOut = !!_petCurrentOwnerKey() && String(p.outOwner || '') === _petCurrentOwnerKey();
         let otherOut = !!_petOutStateKey(p) && !isOut;
+        let leaseParts = _petMercLeaseParts(p.outOwner), otherOutLabel = leaseParts ? '借給傭兵／使用中' : '其他角色出戰中';
         if (confirmUid === p.uid && !p.locked) {
             return `<div class="flex items-center justify-between gap-2 bg-red-950/60 border border-red-700 rounded px-2 py-2 text-sm">
                 <span class="text-red-300 font-bold">確定要放生 ${petDisplayName(p)}（Lv.${p.lv}）嗎？放生後將永遠消失！</span>
@@ -1285,13 +1508,13 @@ function renderPetStorageNPC(div, confirmUid) {
                 </span>
             </div>`;
         }
-        return `<div class="flex items-center gap-2 bg-slate-800 border ${isOut ? 'border-emerald-600' : 'border-slate-600'} rounded px-2 py-1.5 text-sm"${otherOut ? ' style="opacity:.5;filter:grayscale(.9);" title="其他角色出戰中，無法選取——請由原角色收回"' : ''}>
+        return `<div class="flex items-center gap-2 bg-slate-800 border ${isOut ? 'border-emerald-600' : 'border-slate-600'} rounded px-2 py-1.5 text-sm"${otherOut ? ' style="opacity:.5;filter:grayscale(.9);" title="' + otherOutLabel + '，無法修改——請先由傭兵解散或由原角色收回"' : ''}>
             <button type="button" onclick="petToggleLock('${p.uid}')" ${otherOut ? 'disabled' : ''} class="btn shrink-0" style="width:24px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;font-size:14px;background:${p.locked ? 'linear-gradient(135deg,#713f12,#a16207)' : '#1e293b'};border-color:${p.locked ? '#eab308' : '#475569'};color:${p.locked ? '#fef3c7' : '#94a3b8'};${otherOut ? 'opacity:.4;' : ''}" title="${otherOut ? '其他角色出戰中，無法修改' : (p.locked ? '解除鎖定' : '鎖定寵物並隱藏放生選項')}" aria-label="${p.locked ? '解除鎖定' : '鎖定寵物'}">${p.locked ? '🔒' : '🔓'}</button>
             <span class="shrink-0" style="width:44px;height:40px;display:flex;align-items:center;justify-content:center;overflow:hidden;"><img src="${thumb}" alt="" style="max-width:44px;max-height:40px;image-rendering:pixelated;" onerror="this.style.display='none'"></span>
             <span class="flex-1 min-w-0">
                 <span class="font-bold ${isOut ? 'text-emerald-300' : 'text-white'}">${p.form}</span>
                 <span class="text-amber-300"> Lv.${p.lv}</span>
-                <span class="text-slate-400 text-xs">（${PET_KIND_LABEL[def.kind] || ''}·魅力${need}${isOut ? '·本角色出戰中' : (otherOut ? '·其他角色出戰中' : '')}）</span><br>
+                <span class="text-slate-400 text-xs">（${PET_KIND_LABEL[def.kind] || ''}·魅力${need}${isOut ? '·本角色出戰中' : (otherOut ? '·' + otherOutLabel : '')}）</span><br>
                 <span class="text-xs text-slate-300">HP ${p.hp}/${p.mhp}　MP ${p.mp}/${p.mmp + (d.mmpBonus || 0)}　EXP ${expPct}%　攻1D${Math.max(1, Math.round(d.dice * (d.damageMult || 1) * (d.attackMult || 1)))}+${Math.round((d.flat + cb.dmg) * (d.damageMult || 1) * (d.attackMult || 1))} 命中${d.hit + cb.hit} AC${d.ac} 減免${d.dr} ER${d.er} MR${d.mr}</span>
             </span>
             <span class="flex gap-1 shrink-0 flex-wrap justify-end" style="max-width:210px">
@@ -1307,7 +1530,7 @@ function renderPetStorageNPC(div, confirmUid) {
     let vicCnt = player.inv.filter(i => i.id === 'item_victory_fruit').reduce((s, i) => s + (i.cnt || 0), 0);
     div.innerHTML = `
     <div class="flex flex-col gap-3 p-1" data-petui="1">
-        <div class="text-slate-300 text-sm leading-relaxed">${hostName}：我幫你照顧捕獲的寵物。<b class="text-amber-300">最多保管 ${PET_STORAGE_MAX} 隻，同一模式的角色共通</b>。其他角色出戰中的寵物會顯示「使用中」，<b class="text-amber-200">必須先由原角色收回，不能直接轉移</b>。使用誘捕道具後擊殺對應的動物即可捕獲；點「出戰」讓寵物加入隊伍（最多 ${PET_CARRY_MAX} 隻·依寵物需求消耗魅力）。<b class="text-amber-300">只有「一般型態」的寵物（Lv30 以上）可進化，且有兩條路</b>：用「進化果實」→對應的高等型態，或用「勝利果實」→黃金龍；兩種果實都帶在身上時，進化前可自行選擇要走哪條路。高等型態與黃金龍都是最終型態、不會再進化——身上沒有果實可是不能進化的喔。</div>
+        <div class="text-slate-300 text-sm leading-relaxed">${hostName}：我幫你照顧捕獲的寵物。<b class="text-amber-300">最多保管 ${PET_STORAGE_MAX} 隻，同一模式的角色共通</b>。借給傭兵的寵物會顯示「借給傭兵／使用中」，<b class="text-amber-200">需先解散傭兵才能修改裝備、進化或收回</b>；其他角色出戰中的寵物仍不可直接轉移。使用誘捕道具後擊殺對應的動物即可捕獲；點「出戰」讓寵物加入隊伍（最多 ${PET_CARRY_MAX} 隻·依寵物需求消耗魅力）。<b class="text-amber-300">只有「一般型態」的寵物（Lv30 以上）可進化，且有兩條路</b>：用「進化果實」→對應的高等型態，或用「勝利果實」→黃金龍；兩種果實都帶在身上時，進化前可自行選擇要走哪條路。高等型態與黃金龍都是最終型態、不會再進化——身上沒有果實可是不能進化的喔。</div>
         <div class="flex items-center gap-4 bg-slate-800/60 border border-slate-600 rounded p-3 text-sm flex-wrap">
             <span>保管：<span class="text-amber-300 font-bold">${list.length}/${PET_STORAGE_MAX}</span></span>
             <span>出戰：<span class="text-emerald-300 font-bold">${petsOutList().length}/${PET_CARRY_MAX}</span></span>
@@ -1321,19 +1544,21 @@ function renderPetStorageNPC(div, confirmUid) {
 
 // ---------- 九、隊伍清單（renderSquadPanel 掛點：傭兵卡下方）----------
 function renderPetTeamHTML() {
-    let outs = petsOutList();
-    if (!outs.length) return '';
-    return outs.map(p => {
-        let _mmpEff = p.mmp + (((typeof petDerive === 'function' && petDerive(p)) || {}).mmpBonus || 0);   // 🦴 v3.2.42 稽核修：MP 條/浮標含防具精神加成（原本米索莉寵顯示 35/30 爆表）
+    let entries = (typeof partyPetEntries === 'function') ? partyPetEntries() : [];
+    if (!entries.length) return '';
+    return entries.map(x => {
+        let p = x.pet, owner = x.owner;
+        let _mmpEff = p.mmp + (((typeof petDerive === 'function' && petDerive(p, owner)) || {}).mmpBonus || 0);   // 🦴 v3.2.42 稽核修：MP 條/浮標含防具精神加成（原本米索莉寵顯示 35/30 爆表）
         let _mhpE = petMhpEff(p); let hpPct = Math.max(0, Math.min(100, Math.floor(p.hp / Math.max(1, _mhpE) * 100)));
         let mpPct = Math.max(0, Math.min(100, Math.floor(p.mp / Math.max(1, _mmpEff) * 100)));
         let expPct = Math.min(100, Math.floor((p.exp || 0) / petExpReq(p.lv) * 100));
         let thumb = 'assets/anim/' + encodeURIComponent(p.form) + '/d6/idle_0.png';
+        let sourceTag = x.ally ? `·傭兵 ${x.ally._allyName || '隊員'}` : '';
         // 🐾 v3.2.33 高度減半（用戶指示·樣式/元素不變）：縮圖 36×32→26×22、內距/條高/字級/間距減半（用 inline style 避開預編譯 Tailwind 任意值缺漏）
         if (p._downed) {
             return `<div class="bg-slate-800/80 border border-red-800 rounded text-xs flex items-center gap-2" style="padding:3px 6px;">
                 <img src="${thumb}" alt="" style="width:26px;height:22px;object-fit:contain;image-rendering:pixelated;filter:grayscale(1);" onerror="this.style.display='none'">
-                <span class="flex-1" style="font-size:10px;line-height:1.3;"><span class="text-red-400 font-bold">🐾 ${p.form}</span> <span class="text-slate-400">Lv.${p.lv}·倒地</span><br>
+                <span class="flex-1" style="font-size:10px;line-height:1.3;"><span class="text-red-400 font-bold">🐾 ${p.form}</span> <span class="text-slate-400">Lv.${p.lv}·倒地${sourceTag}</span><br>
                 <span class="text-slate-400">${(p._reviveCd || 0) > 0 ? `卷軸復活倒數 ${Math.ceil(p._reviveCd / 10)} 秒` : '可用卷軸復活'}</span></span>
                 <span class="flex gap-1">
                     <button onclick="petRevive('${p.uid}','rez')" class="btn font-bold" style="padding:0 6px;font-size:10px;height:18px;background:linear-gradient(135deg,#065f46,#059669);color:#a7f3d0;border-color:#10b981;">返生術</button>
@@ -1344,7 +1569,7 @@ function renderPetTeamHTML() {
         return `<div class="bg-slate-800/80 border border-slate-600 rounded text-xs" style="padding:3px 6px;">
             <div class="flex items-center gap-2">
                 <img src="${thumb}" alt="" style="width:26px;height:22px;object-fit:contain;image-rendering:pixelated;" onerror="this.style.display='none'">
-                <span class="flex-1 min-w-0" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span class="text-emerald-300 font-bold">🐾 ${p.form}</span> <span class="text-amber-300">Lv.${p.lv}</span> <span class="text-slate-400" style="font-size:10px;">EXP ${expPct}%</span></span>
+                <span class="flex-1 min-w-0" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span class="text-emerald-300 font-bold">🐾 ${p.form}</span> <span class="text-amber-300">Lv.${p.lv}</span> <span class="text-slate-400" style="font-size:10px;">EXP ${expPct}%${sourceTag}</span></span>
                 <span class="text-slate-400 whitespace-nowrap" style="font-size:10px;">HP&lt;<input type="number" min="0" max="95" value="${p.potPct || 0}" onchange="petSetPotPct('${p.uid}',this.value)" class="w-11 bg-slate-900 border border-slate-600 rounded px-1 text-center" style="font-size:10px;height:16px;padding-top:0;padding-bottom:0;">%喝水</span>
             </div>
             <div class="compact-dual-vitals" style="margin-top:2px;">
@@ -1444,7 +1669,7 @@ function _petAnimApply() {
         let host = _petLayerHost();
         let layer = _petLayerEl();
         if (!host || !layer) return;
-        let outs = (typeof player !== 'undefined' && player && player.cls) ? petsOutList() : [];
+        let outs = (typeof player !== 'undefined' && player && player.cls && typeof partyPetsOutList === 'function') ? partyPetsOutList() : [];
         if (typeof summonRenderList === 'function') outs = outs.concat(summonRenderList());   // 🧙 v3.2.19 召喚物 v2 共用寵物圖層（同欄位協定：uid/form/_px/_py/_dir/_animAct/_downed）
         if (typeof guardRenderList === 'function') outs = outs.concat(guardRenderList());   // 🏰 城堡護衛 v2 共用寵物圖層（同欄位協定·八方向 assets/anim/<form>/d<dir>）
         let show = _petInWild() && !(bv && bv.classList.contains('hidden'));
