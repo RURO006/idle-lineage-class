@@ -3541,11 +3541,11 @@ const MOB_BASE_EXP_BONUS = 500;
     // 格式：怪物顯示名稱: [[物品ID, 掉落機率(%)], ...]  每樣獨立判定一次
 
 /* ============================================================================
- * 🛡️ 原作者標記 / 官方版指引（原作者：shines871｜官方免費版：idle-lineage-class）
+ * 🛡️ 原作者標記 / fork 版指引（原作者：shines871｜維護者：RURO006）
  *   授權立場：本作**開放非商業轉載**（須標示原作者出處），**僅禁止商業營利**。
  *   故此段刻意「中性、無指控」，只做兩件事，皆無破壞性、不蒐集任何個資：
- *     1) 於「非官方網域」的部署頂端蓋一條**中性**橫幅：告知這是非官方轉載、
- *        並提供官方最新免費版連結（把玩家導回原作者·對合法非商業轉載與商業盜用皆為真陳述）。
+ *     1) 於「非官方網域」的部署頂端蓋一條**中性**橫幅：告知這是非官方 fork、
+ *        標示本 fork 維護者，並提供原作者版本與本 fork 專案連結。
  *        ⚠️措辭嚴禁出現「盜版 / 未授權 / 廣告 / 惡意」等指控字眼——因授權允許非商業轉載，
  *        對合法轉載者作此指控＝不實/毀謗，風險落在原作者身上。
  *     2) 於原始碼留存作者浮水印與唯一識別碼，供「商業營利」侵權時著作權 / DMCA 舉證。
@@ -3554,7 +3554,7 @@ const MOB_BASE_EXP_BONUS = 500;
  * ========================================================================== */
 // 可見浮水印（executable，去註解 / 壓縮也清不掉；請勿刪除，這是舉證依據之一）
 try {
-  console.log('%c© shines871 · 官方最新免費版：https://shines871.github.io/idle-lineage-class/ ｜ 本作開放非商業轉載（須標示出處）· 禁止商業營利',
+  console.log('%c© shines871 · 原作者版本：https://shines871.github.io/idle-lineage-class/ ｜ 本版本為 RURO006 維護的非官方 fork · 依原始專案聲明僅限非商業用途（須標示出處）',
     'color:#c8a24a;font-weight:bold;font-size:12px');
 } catch (_) {}
 
@@ -3597,7 +3597,8 @@ function _origEnforce() {
   try {
     if (_origAuthorizedHost()) return;
     if (!document.body || document.getElementById('_orig_pbar')) return;
-    var url = 'https://shines871.github.io/idle-lineage-class/';
+    var originalUrl = 'https://shines871.github.io/idle-lineage-class/';
+    var forkUrl = 'https://github.com/RURO006/idle-lineage-class';
     var bar = document.createElement('div');
     bar.id = '_orig_pbar';
     bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:2147483647;'
@@ -3606,10 +3607,11 @@ function _origEnforce() {
       + 'padding:11px 16px;text-align:center;letter-spacing:.3px;'
       + 'box-shadow:0 2px 14px rgba(0,0,0,.45);border-bottom:2px solid #ffcf5a;';
     // ⚠️中性措辭·勿加「盜版/未授權/廣告/惡意」等指控（授權允許非商業轉載→指控合法轉載者有毀謗風險）
-    bar.innerHTML = '📢 這是<span style="color:#ffcf5a">非官方轉載版本</span>，內容可能不是最新。'
-      + '本遊戲<span style="color:#ffcf5a">永久免費</span>，前往<span style="color:#ffcf5a">官方最新版</span>：'
-      + '<a href="' + url + '" style="color:#ffcf5a;font-weight:bold;text-decoration:underline">'
-      + 'shines871.github.io/idle-lineage-class</a>';
+    bar.innerHTML = '📢 這是<span style="color:#ffcf5a">非官方 fork 版本</span>，由<span style="color:#ffcf5a">RURO006</span>維護。'
+      + '原作者版本：<a href="' + originalUrl + '" style="color:#ffcf5a;font-weight:bold;text-decoration:underline">'
+      + 'shines871.github.io/idle-lineage-class</a>　'
+      + '本 fork 更新：<a href="' + forkUrl + '" style="color:#ffcf5a;font-weight:bold;text-decoration:underline">'
+      + 'github.com/RURO006/idle-lineage-class</a>';
     document.body.appendChild(bar);
   } catch (_) {}
 }

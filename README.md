@@ -13,3 +13,16 @@
 | `84a78b86d` | 新增傭兵寵物出戰功能。 |
 
 > 以上內容依目前版本來源 `js/00-data.js` 的 `GAME_VERSION`（`v3.8.37`）整理。
+
+## 專案來源與維護
+
+本專案 fork 自 [shines871/idle-lineage-class](https://github.com/shines871/idle-lineage-class)。
+
+- 原作者：`shines871`
+- 原作者版本：https://shines871.github.io/idle-lineage-class/
+- 本 fork 維護者：`RURO006`
+- 本 fork 專案：https://github.com/RURO006/idle-lineage-class
+
+本版本由 RURO006 進行功能修正、平衡調整與錯誤修復，並不代表原作者的官方版本或立場。請以本專案的更新紀錄判斷本 fork 的變更內容。
+
+依原始專案目前保留的聲明，本專案僅供非商業用途；轉載或再發布時，請保留 `shines871` 原作者出處、原始專案連結與相關版權聲明。遊戲內圖片與音樂的版權仍歸原權利方所有。
