@@ -1284,7 +1284,7 @@ function startGame() {
     player.enSeed = 'es' + uid() + uid();   // 🎲 強化決定論種子（創角產生一次、存進存檔永久固定）：讓強化成敗由種子決定、不可用 save/load 刷
     player._roleEpoch = _roleEpoch();        // 🛡️ 角色世代：刪除後舊分頁不得把同欄位的舊角色寫回
     if (typeof clanSyncCurrentPlayer === 'function') clanSyncCurrentPlayer();   // 同模式已有血盟時，新角色自動成為成員。
-    player.expMigV = 3;   // ⚠️ 新角色天生使用最新經驗刻度（Lv70+ 同級怪等比例曲線）→ 標記免遷移
+    player.expMigV = 4;   // 🆕 新角色天生使用 Lv1-99 統一經驗公式（500 × (Lv²+1)）→ 標記免遷移
 
     let b = createBase[curCreate.cls];
     player.base = { str: b.str+curCreate.str, dex: b.dex+curCreate.dex, con: b.con+curCreate.con, int: b.int+curCreate.int, wis: b.wis+curCreate.wis, cha: b.cha+curCreate.cha };
@@ -1801,13 +1801,27 @@ function loadGame() {
             let _mig3 = (lv, exp) => {
                 lv = Math.max(1, Math.min(100, Math.floor(lv || 1)));
                 if (lv >= 100) return 0;
-                let o = _expReqClassicV2(lv), n = getExpReq(lv);
+                let o = _expReqClassicV2(lv), n = EXP_REQ_CLASSIC[lv] || Infinity;
                 if (!isFinite(o) || !isFinite(n) || o <= 0) return 0;
                 return Math.min(Math.floor(Math.max(0, exp || 0) / o * n), n - 1);
             };
             player.exp = _mig3(player.lv, player.exp);
             (player.allies || []).forEach(a => { if (a) a.exp = _mig3(a.lv, a.exp); });
             player.expMigV = 3;
+        }
+        // 🆕 新經驗曲線遷移（expMigV=4）：Lv1-99 統一使用 500 × (Lv²+1)。
+        //   保留玩家與目前在隊傭兵的「該級經驗百分比」，避免舊存檔因需求降低而讀檔後連升多級。
+        if ((player.expMigV || 0) < 4) {
+            let _mig4 = (lv, exp) => {
+                lv = Math.max(1, Math.min(100, Math.floor(lv || 1)));
+                if (lv >= 100) return 0;
+                let o = EXP_REQ_CLASSIC[lv] || Infinity, n = getExpReq(lv);
+                if (!isFinite(o) || !isFinite(n) || o <= 0) return 0;
+                return Math.min(Math.floor(Math.max(0, exp || 0) / o * n), n - 1);
+            };
+            player.exp = _mig4(player.lv, player.exp);
+            (player.allies || []).forEach(a => { if (a) a.exp = _mig4(a.lv, a.exp); });
+            player.expMigV = 4;
         }
         // 🏛️ v3.0.83 傳統模式已取消：舊傳統角色一次性併入對應基礎模式（一般+傳統→一般、經典+傳統→經典）。
         //   共用倉庫/圖鑑桶另由 js/12 _mergeTradBuckets 於頁面載入時合併（'_tradonly'→''、'_trad'→'_classic'）。

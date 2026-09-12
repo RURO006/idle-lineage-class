@@ -1,6 +1,6 @@
 ﻿/** 遊戲核心資料庫 */
 // 🏷️ 遊戲版本號（顯示於登入頁面下方·單一真相來源）：更新版本時只改這一行，登入頁面自動同步。
-const GAME_VERSION = 'v3.8.34';   // 🏷️ 版本號：末段 0~99 線性遞增，達 100 進位（中位 +1、末段歸 0）
+const GAME_VERSION = 'v3.8.35';   // 🏷️ 版本號：末段 0~99 線性遞增，達 100 進位（中位 +1、末段歸 0）
 // ===== 💾 存檔壓縮（LZString compressToUTF16/decompressFromUTF16·MIT, Pieroxy）：localStorage 內部以 UTF-16 壓縮，省 ~89%，繞過 5MB 上限 =====
 //  ⚠️ 只壓 localStorage（存檔位/倉庫/共用桶/_bak）；匯出檔維持明文 JSON（可攜·importSave 用 JSON.parse 驗證）。_lzGet 相容舊明文存檔（無 'LZ1:' 前綴→原樣回傳）。
 var LZString = (function () {
@@ -250,10 +250,8 @@ function _saveUnwrap(raw) {
   return { payload: raw, signed: false, ok: true };
 }
 const EXP_T = [0, 125, 175, 200, 250, 546, 1105, 1695, 2465, 3439, 4641, 6095, 7825, 9855, 12209, 14911, 17985, 21455, 25345, 29679, 34481, 40033, 45585, 51935, 58849, 66351, 74465, 83215, 92625, 102719, 113521, 125055, 137345, 150415, 164289, 178991, 194545, 210975, 228305, 246559, 265761, 285935, 307105, 329817, 352529, 729360, 1508416, 3495263, 9912189, 36065092];
-// ⚠️v3.0.82：Lv1-69 使用天堂經典版經驗表；一般與經典模式需求相同。
-// ⚖️v3.4.58：Lv70-99 不再沿用過陡的幾何推估，改以 Lv69 的「需求／同級怪經驗」比例為錨點。
-//   同級怪經驗＝等級²＋1；Lv69 需約 385,717 隻，因此 Lv70-99 每級皆維持相同擊殺比例，怪物經驗本身不變。
-//   下列 V2 表保留舊存檔進度百分比遷移之用；正式需求由其 Lv1-69＋新比例組成。
+// 🗃️ 舊版經驗表：僅保留給舊存檔進度比例遷移，不再作為目前遊戲的升級需求。
+//   舊版曾在 Lv1-69 使用固定表，Lv70-99 再切成另一套曲線；新制改為下方單一公式。
 const EXP_REQ_CLASSIC_V2 = [0,
     3, 16, 50, 113, 245, 485, 898, 1584, 2685, 4407,
     7043, 11005, 16865, 25408, 37702, 55190, 79799, 114083, 161403, 226142,
@@ -269,14 +267,16 @@ const EXP_REQ_CLASSIC_V2 = [0,
 const EXP_REQ_LV69_KILLS = Math.ceil(EXP_REQ_CLASSIC_V2[69] / (69 * 69 + 1));   // 385,717
 const EXP_REQ_CLASSIC = EXP_REQ_CLASSIC_V2.map((req, lv) =>
     (lv >= 70 && lv < 100) ? (lv * lv + 1) * EXP_REQ_LV69_KILLS : req
-);   // index＝等級；Lv99→100＝3,780,798,034（約 38 億，不再是 3.74 兆）
+);   // 舊版 v3.4.58 曲線；只供存檔遷移使用
+const EXP_KILLS_PER_LEVEL = 500;   // 🆕 新制：同等級普通怪約擊殺 500 隻升一級
 function _expReqClassicV2(lv) {   // v3.4.58 以前的經典表；僅供 expMigV=3 百分比遷移
     if (lv >= 100) return Infinity;
     return EXP_REQ_CLASSIC_V2[lv] || Infinity;
 }
 function getExpReq(lv) {
     if (lv >= 100) return Infinity;
-    return EXP_REQ_CLASSIC[lv] || Infinity;
+    lv = Math.max(1, Math.floor(Number(lv) || 1));
+    return Math.max(1, Math.floor(EXP_KILLS_PER_LEVEL * (lv * lv + 1)));   // 🆕 新制：Lv1-99 統一約 500 隻同級普通怪升一級
 }
 // 舊制需求（v2.6.40 分段放大制·僅供 js/13 expMigV=2 一次性遷移換算，勿用於遊戲邏輯）
 function _expReqOldV1(lv) {
