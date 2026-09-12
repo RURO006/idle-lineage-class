@@ -582,6 +582,368 @@ function downloadSaveFile(data, fname){
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     logSys(`<span class="text-indigo-300 font-bold">✔ 存檔已匯出至下載資料夾：${fname}</span>`);
 }
+
+// ===== 全部進度匯出 / 匯入 =====
+// 全量備份與單一角色備份分開：單一角色可攜格式會刻意移除傭兵／寵物出戰歸屬，
+// 但全量備份必須保留 8 格角色之間的完整關係，因此採用獨立的結構化容器。
+const ALL_PROGRESS_FORMAT = 'idle-lineage-all-save';
+const ALL_PROGRESS_SCHEMA = 1;
+const ALL_PROGRESS_MODES = [
+    { name:'normal', classic:false, suffix:'' },
+    { name:'classic', classic:true, suffix:'_classic' }
+];
+
+function _allProgressClone(value){
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+function _allProgressModeKey(mode, base){ return base + mode.suffix; }
+function _allProgressPetKey(mode){ return (typeof PET_ROSTER_KEY !== 'undefined' ? PET_ROSTER_KEY : 'fb5_pet_roster') + mode.suffix; }
+function _allProgressJsonRead(key, fallback){
+    let raw = _lsGet(key);
+    if(raw == null || raw === '') return _allProgressClone(fallback);
+    let text = _lzGet(key);
+    if(text == null || text === '') throw new Error('storage decode failed: ' + key);
+    let unwrapped = _saveUnwrap(text);
+    if(unwrapped.signed && !unwrapped.ok) throw new Error('storage signature failed: ' + key);
+    return JSON.parse(unwrapped.payload);
+}
+function _allProgressReadRole(slot){
+    let key = 'lineage_idle_save_' + slot;
+    let raw = _lsGet(key);
+    if(raw == null || raw === '') return null;
+    let text = _lzGet(key);
+    if(text == null || text === '') throw new Error('role storage decode failed: ' + slot);
+    let unwrapped = _saveUnwrap(text);
+    if(unwrapped.signed && !unwrapped.ok) throw new Error('role storage signature failed: ' + slot);
+    let doc = JSON.parse(unwrapped.payload);
+    if(!doc || typeof doc !== 'object' || !doc.p || typeof doc.p !== 'object' || !doc.p.cls) throw new Error('invalid role storage: ' + slot);
+    return doc;
+}
+function _allProgressRoleSeed(p, slot){
+    return p.enSeed || ('es' + _seedHash((p.name || '') + '|' + (p.cls || '') + '|lz').toString(36));
+}
+function _allProgressCurrentGameActive(){
+    let game = document.getElementById('game-screen');
+    return !!(typeof state !== 'undefined' && state && state.running && typeof player !== 'undefined' && player && player.cls && game && !game.classList.contains('hidden'));
+}
+function _allProgressOtherSessions(){
+    try { return typeof _roleOtherActiveSessions === 'function' ? _roleOtherActiveSessions() : []; }
+    catch(e){ return []; }
+}
+function _allProgressGuard(action, allowCurrent){
+    let others = _allProgressOtherSessions();
+    if(others.length){
+        alert(`${action}已取消：偵測到其他遊戲分頁正在使用角色，請先關閉其他分頁後再試。`);
+        return false;
+    }
+    if(!allowCurrent && _allProgressCurrentGameActive()){
+        alert(`${action}已取消：請先返回角色選擇畫面，再操作所有進度。`);
+        return false;
+    }
+    return true;
+}
+function _allProgressFlushCurrent(){
+    if(!_allProgressCurrentGameActive()) return true;
+    let ok = false;
+    try { ok = saveGame() === true; } catch(e){}
+    if(!ok){ alert('匯出已取消：目前角色或寵物資料未能成功儲存，請先排除儲存空間問題。'); return false; }
+    return !_allProgressOtherSessions().length;
+}
+function _allProgressReadMode(mode){
+    let warehouseKey = whKey({ classicMode: mode.classic });
+    let petKey = _allProgressPetKey(mode);
+    let collections = {};
+    [CARDDEX_KEY, EQUIPDEX_KEY, MISCDEX_KEY, RELICDEX_KEY].forEach(base => {
+        collections[base] = _allProgressJsonRead(_allProgressModeKey(mode, base), {});
+    });
+    return {
+        warehouse: _allProgressJsonRead(warehouseKey, { items:[], gold:0 }),
+        warehouseTombs: _allProgressJsonRead(warehouseKey + '_rm', {}),
+        collections: collections,
+        pets: {
+            roster: _allProgressJsonRead(petKey, []),
+            tombs: _allProgressJsonRead(petKey + '_rm', {})
+        },
+        antharasPoints: (function(){
+            let raw = _lzGet('lineage_idle_antharas_points' + mode.suffix);
+            if(raw == null || raw === '') return 0;
+            let number = Number(raw);
+            if(!Number.isFinite(number)) throw new Error('invalid Antharas points');
+            return Math.max(0, Math.floor(number));
+        })()
+    };
+}
+function _allProgressReadMerc(){
+    let out = { ledger: _allProgressJsonRead(MERC_LEDGER_KEY, []), employment:{ normal:[], classic:[] }, leaders:{ normal:{}, classic:{} } };
+    ALL_PROGRESS_MODES.forEach(mode => {
+        out.employment[mode.name] = _allProgressJsonRead(_mercEmploymentKey(mode.classic), []);
+        for(let slot = 1; slot <= 8; slot++)
+            out.leaders[mode.name][String(slot)] = _allProgressJsonRead(_mercEmployerBucketKey(mode.classic, slot), null);
+    });
+    return out;
+}
+function _allProgressReadAntharas(slots){
+    let clears = {};
+    for(let slot = 1; slot <= 8; slot++){
+        let doc = slots[String(slot)];
+        if(!doc || !doc.p || typeof antharasRoleRef !== 'function' || typeof antharasRoleClearKey !== 'function') continue;
+        let ref = antharasRoleRef(doc.p, slot), key = ref && antharasRoleClearKey(ref);
+        if(!key) continue;
+        let raw = _lsGet(key);
+        if(raw == null || raw === '') continue;
+        let number = Number(raw);
+        if(!Number.isFinite(number)) throw new Error('invalid Antharas clear day');
+        let day = Math.max(0, Math.floor(number));
+        clears[key] = day;
+    }
+    return clears;
+}
+function _allProgressCapture(){
+    let slots = {};
+    for(let slot = 1; slot <= 8; slot++) slots[String(slot)] = _allProgressReadRole(slot);
+    let shared = { modes:{ normal:_allProgressReadMode(ALL_PROGRESS_MODES[0]), classic:_allProgressReadMode(ALL_PROGRESS_MODES[1]) } };
+    if(typeof window.pandoraExportSharedState !== 'function') throw new Error('Pandora export API unavailable');
+    shared.pandora = window.pandoraExportSharedState();
+    if(!shared.pandora) throw new Error('Pandora state invalid');
+    if(typeof window.clanExportSharedState !== 'function') throw new Error('clan export API unavailable');
+    shared.clan = window.clanExportSharedState();
+    if(!shared.clan) throw new Error('clan state invalid');
+    shared.merc = _allProgressReadMerc();
+    shared.antharas = { clears:_allProgressReadAntharas(slots) };
+    shared.autoSell = _allProgressJsonRead(AUTOSELL_GLOBAL_KEY, null);
+    return { slots:slots, shared:shared };
+}
+function _allProgressDict(value, label){
+    if(!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(label + '格式不正確');
+    return value;
+}
+function _allProgressValidateMode(mode, name){
+    if(!mode || typeof mode !== 'object' || Array.isArray(mode)) throw new Error(name + '資料格式不正確');
+    if(!mode.warehouse || typeof mode.warehouse !== 'object' || Array.isArray(mode.warehouse) || !Array.isArray(mode.warehouse.items)) throw new Error(name + '倉庫資料格式不正確');
+    if(!Number.isFinite(Number(mode.warehouse.gold)) || Number(mode.warehouse.gold) < 0) throw new Error(name + '倉庫金幣格式不正確');
+    _allProgressDict(mode.warehouseTombs, name + '倉庫墓碑');
+    let collections = mode.collections;
+    if(!collections || typeof collections !== 'object' || Array.isArray(collections)) throw new Error(name + '圖鑑資料格式不正確');
+    [CARDDEX_KEY, EQUIPDEX_KEY, MISCDEX_KEY, RELICDEX_KEY].forEach(base => _allProgressDict(collections[base], name + '圖鑑'));
+    if(!mode.pets || typeof mode.pets !== 'object' || Array.isArray(mode.pets) || !Array.isArray(mode.pets.roster)) throw new Error(name + '寵物資料格式不正確');
+    _allProgressDict(mode.pets.tombs, name + '寵物墓碑');
+    if(!Number.isFinite(Number(mode.antharasPoints)) || Number(mode.antharasPoints) < 0) throw new Error(name + '安塔瑞斯積分格式不正確');
+}
+function _allProgressValidate(snapshot){
+    if(!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot) || !snapshot.slots || typeof snapshot.slots !== 'object' || Array.isArray(snapshot.slots) || !snapshot.shared || typeof snapshot.shared !== 'object') throw new Error('全量備份內容不正確');
+    let clean = _allProgressClone(snapshot), seeds = {};
+    for(let slot = 1; slot <= 8; slot++){
+        let key = String(slot);
+        if(!Object.prototype.hasOwnProperty.call(clean.slots, key)) throw new Error(`備份缺少存檔 ${slot}`);
+        let doc = clean.slots[key];
+        if(doc == null){ clean.slots[key] = null; continue; }
+        if(typeof doc !== 'object' || Array.isArray(doc) || !doc.p || typeof doc.p !== 'object' || !doc.p.cls) throw new Error(`存檔 ${slot} 格式不正確`);
+        let seed = _allProgressRoleSeed(doc.p, slot);
+        if(seed == null || (typeof seed !== 'string' && typeof seed !== 'number')) throw new Error(`存檔 ${slot} 角色身分格式不正確`);
+        doc.p.enSeed = String(seed);
+        doc.p._roleEpoch = _roleEpoch();
+        if(!Array.isArray(doc.p.allies)) doc.p.allies = [];
+        let allySlots = new Set();
+        doc.p.allies.forEach(a => {
+            let allySlot = String(a && a._slot != null ? a._slot : '');
+            if(!a || typeof a !== 'object' || Array.isArray(a) || !a.cls || !/^[1-8]$/.test(allySlot) || allySlot === key || allySlots.has(allySlot)) throw new Error(`存檔 ${slot} 的傭兵資料格式不正確`);
+            let source = clean.slots[allySlot];
+            if(!source || !source.p || !source.p.cls) throw new Error(`存檔 ${slot} 的傭兵來源存檔不存在`);
+            let sourceSeed = String(_allProgressRoleSeed(source.p, allySlot));
+            if(a.enSeed != null && String(a.enSeed) !== sourceSeed) throw new Error(`存檔 ${slot} 的傭兵身分不一致`);
+            allySlots.add(allySlot);
+        });
+        if(seeds[doc.p.enSeed]) throw new Error(`備份包含重複角色身分：存檔 ${seeds[doc.p.enSeed]} 與存檔 ${slot}`);
+        seeds[doc.p.enSeed] = slot;
+    }
+    let shared = clean.shared;
+    if(!shared.modes || typeof shared.modes !== 'object' || Array.isArray(shared.modes) || !Object.prototype.hasOwnProperty.call(shared.modes, 'normal') || !Object.prototype.hasOwnProperty.call(shared.modes, 'classic')) throw new Error('一般／經典模式資料不完整');
+    _allProgressValidateMode(shared.modes.normal, '一般模式');
+    _allProgressValidateMode(shared.modes.classic, '經典模式');
+    if(!shared.pandora || typeof shared.pandora !== 'object' || Array.isArray(shared.pandora) || !Array.isArray(shared.pandora.wanderers) || !Array.isArray(shared.pandora.boards) || !Array.isArray(shared.pandora.nameHistory) || !Number.isFinite(Number(shared.pandora.diamonds)) || Number(shared.pandora.diamonds) < 0) throw new Error('潘朵拉資料格式不正確');
+    if(!shared.clan || typeof shared.clan !== 'object' || Array.isArray(shared.clan) || !shared.clan.modes || typeof shared.clan.modes !== 'object' || Array.isArray(shared.clan.modes) || !Object.prototype.hasOwnProperty.call(shared.clan.modes, 'normal') || !Object.prototype.hasOwnProperty.call(shared.clan.modes, 'classic') || !shared.clan.members || typeof shared.clan.members !== 'object' || Array.isArray(shared.clan.members) || !shared.clan.npcWorlds || typeof shared.clan.npcWorlds !== 'object' || Array.isArray(shared.clan.npcWorlds) || !Object.prototype.hasOwnProperty.call(shared.clan.npcWorlds, 'normal') || !Object.prototype.hasOwnProperty.call(shared.clan.npcWorlds, 'classic')) throw new Error('血盟資料格式不正確');
+    if(!shared.merc || typeof shared.merc !== 'object' || !Array.isArray(shared.merc.ledger)) throw new Error('傭兵帳本資料格式不正確');
+    ['normal','classic'].forEach(mode => {
+        if(!Array.isArray(shared.merc.employment && shared.merc.employment[mode])) throw new Error('傭兵僱傭索引格式不正確');
+        if(!shared.merc.leaders || typeof shared.merc.leaders[mode] !== 'object' || Array.isArray(shared.merc.leaders[mode])) throw new Error('傭兵僱主索引格式不正確');
+        for(let slot = 1; slot <= 8; slot++){
+            let row = shared.merc.leaders[mode][String(slot)];
+            if(row !== null && (typeof row !== 'object' || Array.isArray(row) || !row.employerId || !Array.isArray(row.allies))) throw new Error('傭兵僱主索引格式不正確');
+        }
+    });
+    if(!shared.antharas || typeof shared.antharas !== 'object' || !shared.antharas.clears || typeof shared.antharas.clears !== 'object' || Array.isArray(shared.antharas.clears)) throw new Error('安塔瑞斯紀錄格式不正確');
+    Object.keys(shared.antharas.clears).forEach(k => { if(typeof ANTHARAS_ROLE_DAY_KEY !== 'undefined' && !String(k).startsWith(ANTHARAS_ROLE_DAY_KEY)) throw new Error('安塔瑞斯紀錄格式不正確'); if(!Number.isFinite(Number(shared.antharas.clears[k])) || Number(shared.antharas.clears[k]) < 0) throw new Error('安塔瑞斯紀錄格式不正確'); });
+    if(shared.autoSell !== null && (typeof shared.autoSell !== 'object' || Array.isArray(shared.autoSell))) throw new Error('自動販賣設定格式不正確');
+    return clean;
+}
+function _allProgressAntharasKeys(slots, keys){
+    for(let slot = 1; slot <= 8; slot++){
+        let doc = slots && slots[String(slot)];
+        if(!doc || !doc.p || typeof antharasRoleRef !== 'function' || typeof antharasRoleClearKey !== 'function') continue;
+        let ref = antharasRoleRef(doc.p, slot);
+        if(ref) keys.add(antharasRoleClearKey(ref));
+    }
+}
+function _allProgressTargetKeys(snapshot){
+    let keys = new Set(['lineage_idle_save', 'fb5_pandora_relic_market_v1', CLAN_STATE_KEY, AUTOSELL_GLOBAL_KEY, MERC_LEDGER_KEY]);
+    for(let slot = 1; slot <= 8; slot++){
+        keys.add('lineage_idle_save_' + slot);
+        keys.add('lineage_idle_save_' + slot + '_bak');
+    }
+    ALL_PROGRESS_MODES.forEach(mode => {
+        let wh = whKey({ classicMode:mode.classic });
+        keys.add(wh); keys.add(wh + '_rm'); keys.add(wh + '_bak');
+        [CARDDEX_KEY, EQUIPDEX_KEY, MISCDEX_KEY, RELICDEX_KEY].forEach(base => keys.add(_allProgressModeKey(mode, base)));
+        let pet = _allProgressPetKey(mode);
+        keys.add(pet); keys.add(pet + '_rm'); keys.add(pet + '_bak');
+        keys.add('lineage_idle_antharas_points' + mode.suffix);
+        keys.add(_mercEmploymentKey(mode.classic));
+        for(let slot = 1; slot <= 8; slot++) keys.add(_mercEmployerBucketKey(mode.classic, slot));
+    });
+    let currentSlots = {};
+    for(let slot = 1; slot <= 8; slot++){
+        try { currentSlots[String(slot)] = _allProgressReadRole(slot); } catch(e){ currentSlots[String(slot)] = null; }
+    }
+    _allProgressAntharasKeys(currentSlots, keys);
+    _allProgressAntharasKeys(snapshot && snapshot.slots, keys);
+    Object.keys(snapshot && snapshot.shared && snapshot.shared.antharas && snapshot.shared.antharas.clears || {}).forEach(k => keys.add(k));
+    return Array.from(keys);
+}
+function _allProgressRawSnapshot(keys){ return keys.map(key => ({ key:key, raw:_lsGet(key) })); }
+function _allProgressRawRestore(before){
+    for(let i = before.length - 1; i >= 0; i--){
+        let row = before[i];
+        if(row.raw == null) _lzRemoveStored(row.key);
+        else _lzSetStoredRaw(row.key, row.raw);
+    }
+}
+function _allProgressEncoded(value, signed, raw){
+    let payload = raw ? String(value) : JSON.stringify(value);
+    return signed ? _saveWrap(payload) : payload;
+}
+function _allProgressWritePlan(snapshot){
+    let plan = [], add = (key, value, signed, raw) => plan.push({ key:key, value:value == null ? null : _allProgressEncoded(value, signed, raw) });
+    for(let slot = 1; slot <= 8; slot++) add('lineage_idle_save_' + slot, snapshot.slots[String(slot)], true, false);
+    ALL_PROGRESS_MODES.forEach(mode => {
+        let data = snapshot.shared.modes[mode.name], wh = whKey({ classicMode:mode.classic }), pet = _allProgressPetKey(mode);
+        add(wh, data.warehouse, false, false); add(wh + '_rm', data.warehouseTombs, false, false);
+        [CARDDEX_KEY, EQUIPDEX_KEY, MISCDEX_KEY, RELICDEX_KEY].forEach(base => add(_allProgressModeKey(mode, base), data.collections[base], false, false));
+        add(pet, data.pets.roster, true, false); add(pet + '_rm', data.pets.tombs, true, false);
+        add('lineage_idle_antharas_points' + mode.suffix, data.antharasPoints, false, true);
+        add(_mercEmploymentKey(mode.classic), snapshot.shared.merc.employment[mode.name], false, false);
+        for(let slot = 1; slot <= 8; slot++) add(_mercEmployerBucketKey(mode.classic, slot), snapshot.shared.merc.leaders[mode.name][String(slot)], false, false);
+    });
+    add(MERC_LEDGER_KEY, snapshot.shared.merc.ledger, false, false);
+    add(AUTOSELL_GLOBAL_KEY, snapshot.shared.autoSell, false, false);
+    Object.keys(snapshot.shared.antharas.clears).forEach(key => add(key, snapshot.shared.antharas.clears[key], false, true));
+    return plan;
+}
+function _allProgressRestore(snapshot){
+    let keys = _allProgressTargetKeys(snapshot), before = _allProgressRawSnapshot(keys);
+    let beforePandora = typeof window.pandoraExportSharedState === 'function' ? window.pandoraExportSharedState() : null;
+    let beforeClan = typeof window.clanExportSharedState === 'function' ? window.clanExportSharedState() : null;
+    if(!beforePandora || !beforeClan) return { ok:false, error:'無法建立目前共用資料快照。' };
+    try {
+        // 先清除目標資料，讓網頁版 localStorage 在寫入大檔前釋放舊空間；before[] 負責失敗回滾。
+        keys.forEach(key => _lzRemoveStored(key));
+        for(let row of _allProgressWritePlan(snapshot)){
+            if(row.value == null) continue;
+            if(!_lzSet(row.key, row.value)) throw new Error('storage write failed: ' + row.key);
+        }
+        let pandoraResult = typeof window.pandoraRestoreSharedState === 'function' ? window.pandoraRestoreSharedState(snapshot.shared.pandora) : null;
+        if(!pandoraResult || !pandoraResult.ok) throw new Error('Pandora restore failed');
+        let clanResult = typeof window.clanRestoreSharedState === 'function' ? window.clanRestoreSharedState(snapshot.shared.clan) : null;
+        if(!clanResult || !clanResult.ok) throw new Error('clan restore failed');
+        return { ok:true };
+    } catch(e){
+        _allProgressRawRestore(before);
+        try { if(typeof window.pandoraRestoreSharedState === 'function') window.pandoraRestoreSharedState(beforePandora); } catch(_e){}
+        try { if(typeof window.clanRestoreSharedState === 'function') window.clanRestoreSharedState(beforeClan); } catch(_e){}
+        try { console.error('[all-progress-restore] failed', e); } catch(_e){}
+        return { ok:false, error:'儲存空間不足或共用資料還原失敗。' };
+    }
+}
+function _allProgressSummary(snapshot){
+    let count = 0;
+    for(let slot = 1; slot <= 8; slot++) if(snapshot.slots[String(slot)]) count++;
+    return `備份包含 ${count}/8 個角色、一般／經典模式倉庫、圖鑑、寵物、血盟、傭兵與潘朵拉共用資料。`;
+}
+async function exportAllProgress(){
+    if(!_allProgressGuard('匯出所有進度', true)) return;
+    if(!_allProgressFlushCurrent()) return;
+    let snapshot;
+    try { snapshot = _allProgressCapture(); }
+    catch(e){ try { console.error('[all-progress-export] failed', e); } catch(_e){} alert('匯出失敗：角色或共用遊戲資料無法正確讀取，未產生匯出檔。'); return; }
+    if(_FS && typeof _FS.sign !== 'function'){ alert('匯出失敗：安裝版儲存服務未就緒，請重新啟動遊戲後再試。'); return; }
+    let envelope = { format:ALL_PROGRESS_FORMAT, schema:ALL_PROGRESS_SCHEMA, version:GAME_VERSION, exportedAt:new Date().toISOString(), save:snapshot };
+    let data;
+    try { data = _FS ? _saveWrap(JSON.stringify(envelope)) : _saveWrapPortable(JSON.stringify(envelope)); }
+    catch(e){ alert('匯出失敗：備份檔簽章服務未就緒。'); return; }
+    let fname = _FS ? 'idle_lineage_desktop_all_progress.json' : 'fable5_all_progress.json';
+    if(window.showSaveFilePicker){
+        try {
+            let handle = await window.showSaveFilePicker({ suggestedName:fname, types:[{ description:_FS ? 'Idle Lineage 全部進度' : '放置天堂全部進度', accept:{ 'application/json':['.json'] } }] });
+            let w = await handle.createWritable(); await w.write(data); await w.close();
+            logSys(`<span class="text-indigo-300 font-bold">✔ 所有進度已匯出：${fname}</span>`);
+            return;
+        } catch(e){ if(e && e.name === 'AbortError') return; downloadSaveFile(data, fname); return; }
+    }
+    downloadSaveFile(data, fname);
+}
+function importAllProgress(){
+    if(!_allProgressGuard('匯入所有進度', false)) return;
+    let input = document.createElement('input'); input.type = 'file'; input.accept = '.json,application/json';
+    input.onchange = function(){
+        let file = input.files && input.files[0]; if(!file) return;
+        let reader = new FileReader();
+        reader.onload = function(){
+            let raw = String(reader.result || ''), desktopImport = !!_FS;
+            if(!desktopImport && raw.startsWith('SIG2:')){ alert('匯入失敗：這是 Idle Lineage 安裝版匯出檔，網頁版資料與安裝版資料彼此獨立。'); return; }
+            if(desktopImport && !raw.startsWith('SIG2:')){ alert('匯入失敗：安裝版只支援由 Idle Lineage 安裝版匯出的全部進度備份。'); return; }
+            let unwrapped;
+            try { unwrapped = _saveUnwrap(raw); }
+            catch(e){ alert('匯入失敗：備份檔完整性校驗未通過。'); return; }
+            if(!unwrapped.signed || !unwrapped.ok){ alert('匯入失敗：備份檔完整性校驗未通過。'); return; }
+            let envelope;
+            try { envelope = JSON.parse(unwrapped.payload); }
+            catch(e){ alert('匯入失敗：檔案不是有效的全部進度備份。'); return; }
+            if(desktopImport){
+                if(envelope.format !== ALL_PROGRESS_FORMAT || envelope.schema !== ALL_PROGRESS_SCHEMA || !envelope.save){ alert('匯入失敗：安裝版只支援由 Idle Lineage 安裝版匯出的全部進度備份。'); return; }
+            } else if(envelope.format !== ALL_PROGRESS_FORMAT || envelope.schema !== ALL_PROGRESS_SCHEMA || !envelope.save){
+                alert('匯入失敗：這不是支援的全部進度備份檔。'); return;
+            }
+            let snapshot;
+            try { snapshot = _allProgressValidate(envelope.save); }
+            catch(e){ alert('匯入失敗：' + (e && e.message ? e.message : '備份資料格式不正確。')); return; }
+            if(!_allProgressGuard('匯入所有進度', false)) return;
+            if(!confirm(`即將完整取代目前所有遊戲進度。\n\n${_allProgressSummary(snapshot)}\n\n包含空存檔槽也會被清除，倉庫、圖鑑、寵物、血盟與共用資料會一併覆蓋。\n此操作無法復原，確定要匯入嗎？`)) return;
+            let result = _allProgressRestore(snapshot);
+            if(!result.ok){ alert('匯入失敗：' + result.error + '\n目前資料已嘗試回復。'); return; }
+            // 匯入發生在角色選擇畫面，但本分頁可能剛剛離開過遊戲；清掉舊的執行期快取，
+            // 確保下一次載入一定從剛還原的共用桶與傭兵索引讀取。
+            try {
+                if(typeof _petRoster !== 'undefined') _petRoster = [];
+                if(typeof _petRosterKey !== 'undefined') _petRosterKey = null;
+                if(typeof _petRosterDirty !== 'undefined') _petRosterDirty = false;
+                if(typeof _petReleasedUids !== 'undefined') _petReleasedUids = {};
+                if(typeof _petPendingAddUids !== 'undefined') _petPendingAddUids = {};
+                if(typeof _whLoadUids !== 'undefined') _whLoadUids = null;
+                if(typeof _whLoadOk !== 'undefined') _whLoadOk = true;
+                if(typeof _mercEmploymentBootKey !== 'undefined') _mercEmploymentBootKey = '';
+                if(typeof _mercEmploymentLeaderSig !== 'undefined') _mercEmploymentLeaderSig = '';
+                if(typeof _mercEmploymentLeaderRole !== 'undefined') _mercEmploymentLeaderRole = '';
+                if(typeof _mercEmployerCache !== 'undefined') _mercEmployerCache = { key:'', at:0, value:null };
+            } catch(e){}
+            _loadPage = 0;
+            _loadSelectedSlot = [1,2,3,4].find(n => !!slotSummary(n)) || 1;
+            renderLoadSelect();
+            let count = 0; for(let slot = 1; slot <= 8; slot++) if(snapshot.slots[String(slot)]) count++;
+            alert(`已匯入所有進度（${count}/8 個角色）。`);
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
 // 匯入：對指定存檔位 n 開啟選檔視窗，驗證後用匯入的存檔「取代」該位置的存檔，並刷新清單。
 function importSave(n){
     let input = document.createElement('input');

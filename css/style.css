@@ -1905,6 +1905,18 @@ button.classic-skill-cell { cursor:pointer; }
     height:clamp(18px,2.55vw,32px);
     font-size:clamp(8px,.9vw,12px);
 }
+#main-menu > button.load-global-action {
+    border-color:rgba(109,128,164,.82) !important;
+    color:#cbd5e1 !important;
+    background:linear-gradient(180deg, rgba(22,31,47,.94), rgba(7,11,18,.97)) !important;
+    text-shadow:0 1px 2px #000, 0 0 8px rgba(148,163,184,.34);
+}
+#main-menu > button.load-global-action:hover {
+    color:#f1f5f9 !important;
+    border-color:rgba(165,180,202,.95) !important;
+    background:linear-gradient(180deg, rgba(30,41,59,.98), rgba(7,11,18,.97)) !important;
+    box-shadow:inset 0 1px 0 rgba(226,232,240,.22), 0 0 16px rgba(100,116,139,.38);
+}
 
 /* 🏘️ v3.2.83 城鎮 NPC 地圖：與狩獵框同尺寸(800×450 16:9)·NPC 動態站位(散佈景深)·hover 顯示名字·點擊開功能 */
 #town-view {

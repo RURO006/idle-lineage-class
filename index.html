@@ -14,7 +14,7 @@
     <title>放置天堂 - 日出之國</title>
     <link rel="icon" type="image/png" href="assets/favicon.png">   <!-- 🖼️ 瀏覽器分頁圖示(favicon)：把你的圖放到 assets/favicon.png 即生效；可改 href 路徑或副檔名(.ico/.svg) -->
 
-    <link rel="stylesheet" href="css/style.css?v=v3.8.6-npc-private-chat">
+    <link rel="stylesheet" href="css/style.css?v=v3.8.37-all-progress-menu">
     <link rel="stylesheet" href="css/floating-ui.css?v=v3.5.100-audit-tail">
     <link rel="stylesheet" href="css/tailwind-built.css"><!-- 🔧 預編譯 Tailwind（取代執行期 JIT tailwind.js）：只含實際用到的 class，省 407KB runtime + 移除持續掃描 DOM 的成本。置於 style.css 之後以保留原 cascade（utility 平手時勝過自訂 class，與舊 JIT 注入順序一致） -->
 </head>
@@ -35,6 +35,8 @@
 
         <div id="main-menu" class="flex flex-col gap-5 items-center my-12">
             <button onclick="openLoadSelect()" id="btn-start-menu" class="btn text-xl w-72 py-4 bg-blue-700 hover:bg-blue-600 border-blue-500">開始遊戲</button>
+            <button onclick="exportAllProgress()" id="btn-export-all" type="button" class="btn load-global-action">匯出所有進度</button>
+            <button onclick="importAllProgress()" id="btn-import-all" type="button" class="btn load-global-action">匯入所有進度</button>
             <button onclick="toggleVfxPref()" id="btn-vfx-toggle" class="btn text-base w-72 py-2.5 bg-slate-700 hover:bg-slate-600 border-slate-500">✨ 戰鬥特效：開啟</button>
             <button onclick="toggleVfxNumPref()" id="btn-vfxnum-toggle" class="btn text-base w-72 py-2.5 bg-slate-700 hover:bg-slate-600 border-slate-500">🔢 傷害數字：開啟</button>
             <p class="text-xs text-slate-500 -mt-2 w-72 text-center">效果較弱/卡頓的裝置可關閉戰鬥特效；「傷害數字」可獨立關閉、其餘特效保留（開始前設定，遊戲中不再提供）</p>
@@ -551,7 +553,7 @@
     </script>
 
     <script src="js/anim-manifest.js?v=v3.8.12-necro-relics"></script>
-    <script src="js/00-data.js?v=v3.8.35-unified-exp500"></script>
+    <script src="js/00-data.js?v=v3.8.37-all-progress-menu"></script>
 <script src="js/01-drops-config.js?v=v3.8.26-flywing-relics"></script>
 <script src="js/02-stats-recompute.js?v=v3.8.26-flywing-relics"></script>
     <script src="js/03-combat-core.js?v=v3.8.26-flywing-relics"></script>
@@ -564,7 +566,7 @@
     <script src="js/10-ui-tabs.js?v=v3.8.14-merc-guild"></script>
 <script src="js/11-world-map.js?v=v3.8.17-item-stack-source"></script>
 <script src="js/12-npc-quests.js?v=v3.8.34-merc-trial-class-loot"></script>
-<script src="js/13-shop-save.js?v=v3.8.35-level-statpoints"></script>
+<script src="js/13-shop-save.js?v=v3.8.37-all-progress-menu"></script>
 <script src="js/14-craft-pandora.js?v=v3.8.17-item-stack-source"></script>
 <script src="js/15-cards.js?v=v3.7.66"></script>
 <script src="js/16-equip-book.js?v=v3.8.15-legacy-import-smooth"></script>
@@ -575,7 +577,7 @@
 <script src="js/21-relic-book.js?v=v3.8.15-legacy-import-smooth"></script>
     <script src="js/23-summons.js?v=v3.8.23-sherine-set-rework"></script>
     <script src="js/22-pets.js?v=v3.8.23-sherine-set-rework"></script>
-    <script src="js/24-pandora-relic-market.js?v=v3.7.70"></script>
+    <script src="js/24-pandora-relic-market.js?v=v3.8.37-all-progress-menu"></script>
     <script src="js/25-clan-system.js?v=v3.8.7-social-private"></script>
     <script src="js/26-world-channel.js?v=v3.8.13-private-bond"></script>
 <script src="js/28-pvp-arena.js?v=v3.7.89-stage33-host-sign"></script>

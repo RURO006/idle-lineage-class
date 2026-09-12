@@ -1938,6 +1938,37 @@
         return result;
     }
 
+    // 💾 全量備份：提供完整潘朵拉共用狀態的可攜快照（龍鑽、叫賣 NPC、遺物布告欄與冷卻）。
+    //    匯出端只取正規化後的邏輯資料，不把目前環境的 SIG1/SIG2 或 LZ1 包裝帶到備份檔。
+    function pandoraExportSharedState() {
+        try {
+            let raw = _lzGet(STORE_KEY);
+            if (raw == null || raw === '') return JSON.parse(JSON.stringify(_defaultState()));
+            let unwrapped = _saveUnwrap(raw);
+            if (!unwrapped || (unwrapped.signed && !unwrapped.ok) || unwrapped.payload == null) return null;
+            return JSON.parse(JSON.stringify(_normalizeState(JSON.parse(unwrapped.payload))));
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // 💾 全量還原：沿用潘朵拉既有跨分頁鎖、正規化與重新渲染流程。
+    function pandoraRestoreSharedState(snapshot) {
+        try {
+            if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return { ok:false, error:'潘朵拉資料格式不正確。' };
+            let clean = _normalizeState(JSON.parse(JSON.stringify(snapshot)));
+            let result = _withStateLock(st => {
+                Object.keys(st).forEach(k => delete st[k]);
+                Object.assign(st, clean);
+                return {};
+            });
+            if (result.ok) _rerenderPandora();
+            return result;
+        } catch (e) {
+            return { ok:false, error:'潘朵拉資料無法還原。' };
+        }
+    }
+
     window.wanderingBuyerSystemTick = wanderingBuyerSystemTick;
     window.pandoraUpdateWandererAlignment = pandoraUpdateWandererAlignment;
     window.renderWanderBroadcastPins = renderWanderBroadcastPins;
@@ -1969,6 +2000,8 @@
     window.pandoraGetSharedDiamonds = pandoraGetSharedDiamonds;
     window.pandoraAdjustSharedDiamonds = pandoraAdjustSharedDiamonds;
     window.pandoraRestoreSharedDiamonds = pandoraRestoreSharedDiamonds;
+    window.pandoraExportSharedState = pandoraExportSharedState;
+    window.pandoraRestoreSharedState = pandoraRestoreSharedState;
 
     setTimeout(wanderingBuyerSystemTick, 1500);
     setInterval(wanderingBuyerSystemTick, 30000);
