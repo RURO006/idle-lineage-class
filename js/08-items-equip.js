@@ -1542,8 +1542,15 @@ function _updateUIImpl() {
         let _tabStats = document.getElementById('tab-stats'); if (_tabStats) _tabStats.classList.toggle('is-respec', _respecOn);
         let _bar = document.getElementById('alloc-edit-bar');
         if (_bar) {
-            _bar.classList.toggle('hidden', !_respecOn);   // 配點框只在使用回憶蠟燭時顯示；一般升級點僅顯示屬性旁的＋按鈕
-            let _lbl = document.getElementById('alloc-bar-label'); if (_lbl) { _lbl.textContent = _ptsLeft; _lbl.title = `剩餘配點：${_ptsLeft}`; }
+            // 一般升級點也要顯示剩餘數量；回憶蠟燭時則同時顯示完整重置框。
+            _bar.classList.toggle('hidden', !_editing);
+            let _lbl = document.getElementById('alloc-bar-label'); if (_lbl) {
+                _lbl.textContent = _ptsLeft;
+                _lbl.title = `剩餘配點：${_ptsLeft}`;
+                _lbl.setAttribute('aria-label', `剩餘配點：${_ptsLeft}`);
+            }
+            let _actions = _bar.querySelector('.ability-respec-actions');
+            if (_actions) _actions.classList.toggle('hidden', !_respecOn);
             let _hint = document.getElementById('alloc-bar-hint'); if (_hint) _hint.classList.toggle('hidden', !_respecOn);
             let _cf = document.getElementById('alloc-confirm-btn'); if (_cf) _cf.classList.toggle('hidden', !_respecOn);
             let _cc = document.getElementById('alloc-cancel-btn'); if (_cc) _cc.classList.toggle('hidden', !_respecOn);
