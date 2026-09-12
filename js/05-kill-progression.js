@@ -388,7 +388,7 @@ function killMob(idx) {
             a.exp = (a.exp || 0) + _gain;
             a._expGained = (a._expGained || 0) + _gain;
             let _up = 0;
-            while ((a.lv || 1) < 100 && a.exp >= getExpReq(a.lv)) { a.exp -= getExpReq(a.lv); a.lv++; if (a.lv >= 50) a.bonus = (a.bonus || 0) + 1; _up++; }   // 比照 checkLvUp 升級曲線
+            while ((a.lv || 1) < 100 && a.exp >= getExpReq(a.lv)) { a.exp -= getExpReq(a.lv); a.lv++; a.bonus = (a.bonus || 0) + 1; _up++; }   // 比照 checkLvUp：每升一級取得 1 點能力點
             if ((a.lv || 1) >= 100) a.exp = 0;
             if (_up > 0) { try { if (typeof _allyLevelRecompute === 'function') _allyLevelRecompute(a); } catch (e) {} logCombat(`<span class="text-yellow-300 font-bold">協力傭兵 ${a._allyName} 升級了！目前 Lv.${a.lv}</span>`, 'mercenary'); try { renderSquadPanel(); } catch (e) {} }
         });
@@ -1364,15 +1364,16 @@ function renderRiftEntrance(container) {
 }
 
 function checkLvUp() {
-    let up = false;
+    let up = false, gained = 0;
     while(player.lv < 100 && player.exp >= getExpReq(player.lv)) {
         player.exp -= getExpReq(player.lv);   // 達到「升下一等所需經驗」即扣除該需求並升一級（非累積）
         player.lv++;
-        if(player.lv >= 50) player.bonus++;
+        player.bonus = (player.bonus || 0) + 1;
+        gained++;
         up = true;
     }
     if (up) {
-        logSys(`<span class="text-yellow-400 font-bold text-lg">★★★ 升級了！目前等級 ${player.lv} ★★★</span>`);
+        logSys(`<span class="text-yellow-400 font-bold text-lg">★★★ 升級了！目前等級 ${player.lv}（獲得 ${gained} 點能力點）★★★</span>`);
         calcStats();
         player.hp = player.mhp; player.mp = player.mmp;
         try { vfxLevelUp(); } catch(e){}   // ✨ VFX：升級慶祝

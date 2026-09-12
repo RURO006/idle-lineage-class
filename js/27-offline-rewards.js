@@ -700,7 +700,7 @@
             while ((a.lv || 1) < 100 && a.exp >= getExpReq(a.lv)) {
                 a.exp -= getExpReq(a.lv);
                 a.lv++;
-                if (a.lv >= 50) a.bonus = (a.bonus || 0) + 1;
+                a.bonus = (a.bonus || 0) + 1;
                 levels++;
             }
             if ((a.lv || 1) >= 100) a.exp = 0;

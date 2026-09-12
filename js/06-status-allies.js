@@ -3534,7 +3534,7 @@ function _settleAllyExpDirect(ally, reason) {
                     while ((ctx.source.lv || 1) < 100 && ctx.source.exp >= getExpReq(ctx.source.lv)) {
                         ctx.source.exp -= getExpReq(ctx.source.lv);
                         ctx.source.lv++;
-                        if (ctx.source.lv >= 50) ctx.source.bonus = (ctx.source.bonus || 0) + 1;
+                        ctx.source.bonus = (ctx.source.bonus || 0) + 1;
                     }
                     if ((ctx.source.lv || 1) >= 100) ctx.source.exp = 0;
                 }
@@ -3592,7 +3592,7 @@ function mercExpClaimPending(_retry) {
         let before = player.lv || 1;
         if (total > 0) {
             player.exp = (player.exp || 0) + total;
-            while ((player.lv || 1) < 100 && player.exp >= getExpReq(player.lv)) { player.exp -= getExpReq(player.lv); player.lv++; if (player.lv >= 50) player.bonus = (player.bonus || 0) + 1; }   // 比照 checkLvUp 升級曲線
+            while ((player.lv || 1) < 100 && player.exp >= getExpReq(player.lv)) { player.exp -= getExpReq(player.lv); player.lv++; player.bonus = (player.bonus || 0) + 1; }   // 比照 checkLvUp：每升一級取得 1 點能力點
             if ((player.lv || 1) >= 100) player.exp = 0;   // 滿等不留溢出經驗
         }
         if (alignmentDelta) player.alignmentValue = (typeof pvpClampAlignment === 'function') ? pvpClampAlignment((Number(player.alignmentValue) || 0) + alignmentDelta) : Math.max(-32767, Math.min(32767, Math.round((Number(player.alignmentValue) || 0) + alignmentDelta)));

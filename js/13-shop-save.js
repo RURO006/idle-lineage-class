@@ -655,6 +655,7 @@ function importSave(n){
             if(clanState !== undefined && (!clanState || typeof clanState !== 'object' || Array.isArray(clanState) || !clanState.modes || !clanState.members)){
                 alert('匯入失敗：血盟資料格式不正確。'); return;
             }
+            let _recoveredLevelPoints = repairLevelUpPoints(d.p);
             let saveText = JSON.stringify(d);
             if(whData !== undefined || petData !== undefined || pandoraDiamonds !== undefined || clanState !== undefined){ let _c = {}; for(let k in d){ if(k !== 'wh' && k !== 'pets' && k !== 'pandoraDiamonds' && k !== 'clanState') _c[k] = d[k]; } saveText = JSON.stringify(_c); }
             // 🔧 詢問是否一併還原共用倉庫（會覆蓋現有倉庫，四個存檔位共用）
@@ -761,7 +762,7 @@ function importSave(n){
             }
             renderLoadSelect();   // 重新整理存檔位清單（更新名稱/等級與可載入狀態）
             let ns = slotSummary(n);
-            alert(`已匯入到存檔 ${n}：${ns ? (ns.cls + ' Lv.' + ns.lv + '　' + ns.name) : '完成'}。${whMsg}${petMsg}${pandoraMsg}${clanMsg}`);
+            alert(`已匯入到存檔 ${n}：${ns ? (ns.cls + ' Lv.' + ns.lv + '　' + ns.name) : '完成'}。${whMsg}${petMsg}${pandoraMsg}${clanMsg}${_recoveredLevelPoints > 0 ? `\n已補回 ${_recoveredLevelPoints} 點以前未取得的升級能力點。` : ''}`);
         };
         reader.readAsText(file);
     };
@@ -1842,6 +1843,9 @@ function loadGame() {
         // 🔧 架構#6：集中式預設值合併（放在所有「轉換型」遷移之後，作為缺漏欄位的統一保底）。
         // 日後新增欄位只需登錄於 SAVE_DEFAULTS；上方逐項 if(undefined) 為歷史遷移，不必再增列。
         applySaveDefaults(player);
+        let _levelPointRepair = repairLevelUpPoints(player);
+        (player.allies || []).forEach(a => { _levelPointRepair += repairLevelUpPoints(a); });
+        if (_levelPointRepair > 0) logSys(`<span class="text-emerald-300 font-bold">已補回 ${_levelPointRepair} 點以前未取得的升級能力點。</span>`);
         if (typeof repairMasteryState === 'function') _masteryRepair = repairMasteryState(player);
         if (!player.siege || typeof player.siege !== 'object') player.siege = {};
         if (player.ismaelAccUsed && !(player.siege.accCdUntil > 0)) player.siege.accCdUntil = Date.now() + 24 * 3600 * 1000;
@@ -1958,9 +1962,37 @@ function loadGame() {
                 logSys('<span class="text-slate-400">已清除經典模式角色中不應存在的舊精通資料。</span>');
             }
         }
-        if (_masteryRepair && _masteryRepair.changed) saveGame();   // 修復後立即固化，避免重載時再次遇到同一壞狀態
+        if ((_masteryRepair && _masteryRepair.changed) || _levelPointRepair > 0) saveGame();   // 修復後立即固化，避免重載時再次遇到同一壞狀態
         try { if (typeof purgeReplacedAllies === 'function') purgeReplacedAllies(); } catch (e) {}   // 🤝 v3.4.23 載入後掃描：出戰傭兵的來源存檔位若已換成新角色（enSeed 不同）→ 自動解散
     }
+}
+
+// 🆕 升級能力點補發：新制 Lv2 起每升一級 1 點；舊角色曾只在 Lv50 後取得，依已分配＋未分配點數補回缺額。
+//    回憶蠟燭重置後 base 會還原為純職業基礎、alloc 會包含創角點數，因此純 base 狀態要扣回該職業的創角點數再計算。
+function repairLevelUpPoints(owner) {
+    if (!owner || typeof owner !== 'object') return 0;
+    let keys = ['str','dex','con','int','wis','cha'];
+    if (!owner.alloc || typeof owner.alloc !== 'object' || Array.isArray(owner.alloc)) owner.alloc = {};
+    let allocated = 0;
+    keys.forEach(s => {
+        let n = Number(owner.alloc[s]);
+        if (!Number.isFinite(n) || n < 0) n = 0;
+        n = Math.floor(n);
+        owner.alloc[s] = n;
+        allocated += n;
+    });
+    let held = Number(owner.bonus);
+    if (!Number.isFinite(held) || held < 0) held = 0;
+    held = Math.floor(held);
+    let creationPtsInAlloc = 0;
+    let b = (typeof createBase !== 'undefined' && createBase[owner.cls]) ? createBase[owner.cls] : null;
+    if (b && owner.base && keys.every(s => Number(owner.base[s]) === Number(b[s]))) creationPtsInAlloc = Math.max(0, Math.floor(Number(b.pts) || 0));
+    let accounted = Math.max(0, allocated - creationPtsInAlloc) + held;
+    let lv = Math.max(1, Math.min(100, Math.floor(Number(owner.lv) || 1)));
+    let expected = Math.max(0, lv - 1);
+    let missing = Math.max(0, expected - accounted);
+    owner.bonus = held + missing;
+    return missing;
 }
 
 // 配點/萬能藥的「自然屬性值」：基礎+配點+萬能藥（不含裝備與 buff）；屬性上限只套用在此值上，裝備/buff 可再往上疊加
@@ -1982,7 +2014,7 @@ function startRespec() {
     let c = player.inv.find(i => i.id === 'candle');
     if (!c) { logSys('你沒有回憶蠟燭。'); return; }
     let b = createBase[player.cls];
-    _respec = { draft: { str:0, dex:0, con:0, int:0, wis:0, cha:0 }, pts: b.pts + Math.max(0, (player.lv || 1) - 49) };   // 可重配＝創角點數＋(等級-49)升級點數
+    _respec = { draft: { str:0, dex:0, con:0, int:0, wis:0, cha:0 }, pts: b.pts + Math.max(0, (player.lv || 1) - 1) };   // 可重配＝創角點數＋Lv2起每級1點升級點數
     { let _sb = document.querySelector('[onclick*="switchTab(\'stats\'"]'); if (_sb) switchTab('stats', _sb); }   // 切到能力分頁讓玩家配點
     updateUI();
     logSys('🕯️ 回憶蠟燭：六大屬性已暫時回到 Lv1，請以 +／- 重新分配後按「確認」生效（「取消」則不消耗蠟燭）。');
