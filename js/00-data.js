@@ -3263,6 +3263,16 @@ const DB = {
     }
 }; // DB 結尾在這裡
 
+// 🆕 怪物基礎經驗加成：所有原本會給經驗的怪物每隻額外 +500；原本 exp=0 的特殊單位仍維持 0。
+const MOB_BASE_EXP_BONUS = 500;
+(function applyMobBaseExpBonus() {
+    Object.keys(DB.mobs).forEach(id => {
+        let mob = DB.mobs[id];
+        if (!mob || !Number.isFinite(Number(mob.exp)) || Number(mob.exp) <= 0) return;
+        mob.exp = Math.floor(Number(mob.exp)) + MOB_BASE_EXP_BONUS;
+    });
+})();
+
 // ===== Lv51+ 頭目基礎 HP 曲線 =====
 // 只提高低於同級下限的頭目，不降低既有高血量；卡瑞維持原始 3,000 HP。
 (function normalizeHighLevelBossHp() {
