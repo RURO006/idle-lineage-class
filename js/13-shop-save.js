@@ -425,10 +425,19 @@ function _roleMarkDeleted(fp){
 function _roleSaveAllowed(){
     let fp = _roleFingerprint(player);
     if(!fp) return false;
-    let guards = _roleReadObject(ROLE_DELETED_GUARD_KEY);
-    if(guards[fp]) return false;
     let stored = _roleReadSavePlayer(currentSlot);
-    return !stored || _roleFingerprint(stored) === fp;
+    let storedFp = stored ? _roleFingerprint(stored) : '';
+    let guards = _roleReadObject(ROLE_DELETED_GUARD_KEY);
+    if(guards[fp]){
+        // 刪角前會先寫入保護標記；若之後刪除動作失敗，標記可能殘留，
+        // 讓仍在同一存檔位的原角色永久被誤判成「已刪除」。
+        // 只有確認磁碟上的角色仍是同一個指紋時才清除此假鎖；
+        // 若存檔已被刪除或換成別的角色，維持禁止舊分頁寫入的安全閘。
+        if(!stored || storedFp !== fp) return false;
+        delete guards[fp];
+        if(!_roleWriteObject(ROLE_DELETED_GUARD_KEY, guards)) return false;
+    }
+    return !stored || storedFp === fp;
 }
 setInterval(_roleSessionHeartbeat, 2000);
 // 🔄 登入畫面徽章活刷：只重算徽章、原地增刪 span——不整頁重繪（不打斷選取與立繪動畫），存檔面資料用 _loadSlotMeta 快取。
@@ -455,9 +464,9 @@ setInterval(function(){
 //    __fb5CloseFlush＝繞過下方 saveGame 的「補跑期間延後存檔」閘（背景節流喚醒間 _tickDebt 常 ≥100ms，
 //    不繞過＝最終進度不落地）。旗標名沿用 v3.7.31，由此處設定與清除。
 function _flushSaveNow(){
-    if(typeof player === 'undefined' || !player || !player.cls || typeof saveGame !== 'function') return;
+    if(typeof player === 'undefined' || !player || !player.cls || typeof saveGame !== 'function') return false;
     if(typeof window !== 'undefined') window.__fb5CloseFlush = true;
-    try { saveGame(); } catch(e) {}
+    try { return saveGame() === true; } catch(e) { return false; }
     finally { if(typeof window !== 'undefined') window.__fb5CloseFlush = false; }
 }
 if(typeof document !== 'undefined' && document.addEventListener)
@@ -922,6 +931,14 @@ function importAllProgress(){
             // 匯入發生在角色選擇畫面，但本分頁可能剛剛離開過遊戲；清掉舊的執行期快取，
             // 確保下一次載入一定從剛還原的共用桶與傭兵索引讀取。
             try {
+                // 全部匯入會替每個角色建立新的 _roleEpoch。若保留剛離開遊戲的
+                // player，頁面離開／匯出時會拿舊角色去比對新存檔，導致防寫入鎖
+                // 正確地拒絕寫入，但使用者會看到「角色已被刪除或存檔位已更換」。
+                _uiConfigReady = false;
+                if(typeof freshPlayerState === 'function') player = freshPlayerState();
+                if(typeof freshMapState === 'function') mapState = freshMapState();
+                if(typeof state !== 'undefined' && state) state.running = false;
+                if(typeof _roleSessionForget === 'function') _roleSessionForget();
                 if(typeof _petRoster !== 'undefined') _petRoster = [];
                 if(typeof _petRosterKey !== 'undefined') _petRosterKey = null;
                 if(typeof _petRosterDirty !== 'undefined') _petRosterDirty = false;
@@ -1213,7 +1230,16 @@ function loadBackToMenu(){
 
 function returnToCharacterSelect(){
     if(typeof player === 'undefined' || !player || !player.cls) return false;
-    _flushSaveNow();   // 🗑️ v3.7.94 原本走 js/27 的 offlinePrepareCharacterSelect（存檔＋寫離線快照）；離線掛機移除後只留最終存檔
+    const _saveOk = _flushSaveNow();   // 🗑️ v3.7.94 原本走 js/27 的 offlinePrepareCharacterSelect（存檔＋寫離線快照）；離線掛機移除後只留最終存檔
+
+    // 存檔成功後不再把舊角色物件留在選角畫面。否則匯出／背景事件仍可能
+    // 看到 player.cls，拿已離開遊戲的記憶體角色再跑一次 saveGame，觸發角色防寫入鎖。
+    // 存檔失敗時保留物件，讓呼叫端仍可看到錯誤並保留尚未落地的進度供重試。
+    if(_saveOk){
+        _uiConfigReady = false;
+        try { if(typeof freshPlayerState === 'function') player = freshPlayerState(); } catch(e) {}
+        try { if(typeof freshMapState === 'function') mapState = freshMapState(); } catch(e) {}
+    }
 
     if(typeof stopGameTimers === 'function') stopGameTimers();
     if(typeof state !== 'undefined' && state) state.running = false;
@@ -1360,7 +1386,15 @@ function loadDeleteSelected(){
     try { if(typeof antharasForgetRoleClear === 'function') antharasForgetRoleClear(oldPlayer, slot); } catch(e){ console.warn('antharas clear cleanup', e); }
     _lsRemove('lineage_idle_save_' + slot);
     _lsRemove('lineage_idle_save_' + slot + '_bak');
-    if(_lsGet('lineage_idle_save_' + slot)){ alert('角色存檔刪除失敗，請重新整理後再試。'); return; }
+    if(_lsGet('lineage_idle_save_' + slot)){
+        // 刪除失敗時回滾剛寫入的保護標記；否則原角色仍在磁碟上，
+        // 卻會被後續 saveGame 永久視為已刪除，形成「配點不保存／無法匯出」假故障。
+        if(fp){
+            let guards = _roleReadObject(ROLE_DELETED_GUARD_KEY);
+            if(guards[fp]){ delete guards[fp]; _roleWriteObject(ROLE_DELETED_GUARD_KEY, guards); }
+        }
+        alert('角色存檔刪除失敗，請重新整理後再試。'); return;
+    }
     try { if(typeof clanOnRoleDeleted === 'function') clanOnRoleDeleted(oldPlayer); } catch(e){ console.warn('clan delete cleanup', e); }
     renderLoadSelect();
     alert(`角色「${expected}」已刪除。現在可以在此欄位創建新角色或匯入進度。`);
