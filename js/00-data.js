@@ -3592,10 +3592,23 @@ function _origAuthorizedHost() {
   return _origAuthCache;
 }
 
-// 官方版指引橫幅（中性·無指控）：僅在非官方網域顯示；若被移除可安全重掛（見 gameLoop）
+// fork 版指引橫幅（中性·無指控）：僅在非官方網域顯示；可關閉，每 7 天最多顯示一次（見 gameLoop）
+var _origNoticeShownKey = 'idle_lineage_fork_notice_shown_at_v1';
+var _origNoticeWeekMs = 7 * 24 * 60 * 60 * 1000;
+function _origNoticeShownRecently() {
+  try {
+    var at = Number(localStorage.getItem(_origNoticeShownKey) || 0);
+    var now = Date.now();
+    return at > 0 && now >= at && now - at < _origNoticeWeekMs;
+  } catch (_) { return false; }
+}
+function _origNoticeRememberShown() {
+  try { localStorage.setItem(_origNoticeShownKey, String(Date.now())); } catch (_) {}
+}
 function _origEnforce() {
   try {
     if (_origAuthorizedHost()) return;
+    if (_origNoticeShownRecently()) return;
     if (!document.body || document.getElementById('_orig_pbar')) return;
     var originalUrl = 'https://shines871.github.io/idle-lineage-class/';
     var forkUrl = 'https://github.com/RURO006/idle-lineage-class';
@@ -3604,15 +3617,25 @@ function _origEnforce() {
     bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:2147483647;'
       + 'background:linear-gradient(90deg,#0d1f3a,#17408a,#0d1f3a);color:#eef4ff;'
       + 'font:bold 15px/1.5 "Microsoft JhengHei","Segoe UI",Arial,sans-serif;'
-      + 'padding:11px 16px;text-align:center;letter-spacing:.3px;'
+      + 'padding:11px 76px 11px 16px;text-align:center;letter-spacing:.3px;'
       + 'box-shadow:0 2px 14px rgba(0,0,0,.45);border-bottom:2px solid #ffcf5a;';
     // ⚠️中性措辭·勿加「盜版/未授權/廣告/惡意」等指控（授權允許非商業轉載→指控合法轉載者有毀謗風險）
     bar.innerHTML = '📢 這是<span style="color:#ffcf5a">非官方 fork 版本</span>，由<span style="color:#ffcf5a">RURO006</span>維護。'
       + '原作者版本：<a href="' + originalUrl + '" style="color:#ffcf5a;font-weight:bold;text-decoration:underline">'
       + 'shines871.github.io/idle-lineage-class</a>　'
       + '本 fork 更新：<a href="' + forkUrl + '" style="color:#ffcf5a;font-weight:bold;text-decoration:underline">'
-      + 'github.com/RURO006/idle-lineage-class</a>';
+      + 'github.com/RURO006/idle-lineage-class</a>'
+      + '<button type="button" id="_orig_pbar_close" aria-label="關閉來源提示"'
+      + ' style="position:absolute;right:12px;top:50%;transform:translateY(-50%);'
+      + 'padding:4px 9px;border:1px solid #ffcf5a;border-radius:5px;'
+      + 'background:rgba(15,23,42,.75);color:#ffcf5a;cursor:pointer;'
+      + 'font:bold 13px/1.2 \"Microsoft JhengHei\",\"Segoe UI\",Arial,sans-serif;">關閉</button>';
     document.body.appendChild(bar);
+    _origNoticeRememberShown();
+    var closeBtn = document.getElementById('_orig_pbar_close');
+    if (closeBtn) closeBtn.addEventListener('click', function () {
+      if (bar.parentNode) bar.parentNode.removeChild(bar);
+    });
   } catch (_) {}
 }
 
