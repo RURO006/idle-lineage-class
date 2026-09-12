@@ -1243,14 +1243,14 @@ function getWeightedGachaResult(doubleNonRare, excludeCards) {
 }
 
 // ==========================================
-// 🔧 潘朵拉黑市：一次陳列 24 件商品（桌面 3 欄 × 8 列；icon/名稱/價格/購買·能力走 tooltip）。
-//    每 10 分鐘輪換 1 格（round-robin），每件商品自上架起持續 240 分鐘（24 格 × 10 分鐘一圈）才再刷新。
-//    以遊戲 tick 計時（存讀檔保留·離線經補跑自然推進）；離線超過一圈(240分鐘)直接全面換貨。
+// 🔧 潘朵拉黑市：一次陳列 300 件商品（桌面 3 欄 × 100 列；icon/名稱/價格/購買·能力走 tooltip）。
+//    每 10 分鐘全面輪換 300 格，每件商品自上架起持續 10 分鐘才再刷新。
+//    以遊戲 tick 計時（存讀檔保留·離線經補跑自然推進）；離線超過一個輪換週期直接全面換貨。
 //    出現機率＝原始 gachaWeight（v3.0.81 起 initGachaWeights 的 ≥50 ×2 加倍已移除）。
 // ==========================================
-const PANDORA_SLOT_COUNT = 24;
+const PANDORA_SLOT_COUNT = 300;
 const PANDORA_SLOT_TICKS = 6000;   // 10 分鐘 = 600 秒 × 10 tick/秒
-const PANDORA_LIFETIME_TICKS = PANDORA_SLOT_TICKS * PANDORA_SLOT_COUNT;   // 240 分鐘
+const PANDORA_LIFETIME_TICKS = PANDORA_SLOT_TICKS;   // 10 分鐘；每次到期全面重抽 300 格
 const PANDORA_CARD_LIMIT = 5;       // 普卡／銀卡／金卡合計最多同時佔用 5 個黑市商品格（僅限制隨機輪換；玩家收購單上架的卡片不計入也不受限）
 let _pandoraDiv = null;            // 目前黑市面板容器（購買/輪換後重繪用）
 
@@ -1517,9 +1517,15 @@ function refreshPandoraMarket(force) {
     let changed = false, latest = null, orderHit = null;
     let bad = !m || !Array.isArray(m.slots) || m.slots.length !== PANDORA_SLOT_COUNT || m.slots.some(s => !s || !DB.items[s.id]) || pandoraMarketCardCount(m) > PANDORA_CARD_LIMIT;
     if (force || bad || (nowT - (m ? (m.lastTick || 0) : 0)) >= PANDORA_LIFETIME_TICKS) {
-        // 初次進場／資料損壞／離線超過一圈：全面換貨（日誌只公告最新一件，不洗版）
+        // 初次進場／資料損壞／輪換到期：全面換貨（日誌只公告最新一件，不洗版）
+        let previousTick = m ? (m.lastTick || 0) : nowT;
+        let nextTick = nowT;
+        if (!force && !bad && m) {
+            let cycles = Math.max(1, Math.floor((nowT - previousTick) / PANDORA_SLOT_TICKS));
+            nextTick = previousTick + cycles * PANDORA_SLOT_TICKS;
+        }
         let nextMarket = {
-            slots: [], seq: 0, lastTick: nowT, lastIdx: PANDORA_SLOT_COUNT - 1,
+            slots: [], seq: 0, lastTick: nextTick, lastIdx: PANDORA_SLOT_COUNT - 1,
             buyOrder: m && m.buyOrder ? m.buyOrder : null,
             notice: m && m.notice ? m.notice : null
         };
@@ -1531,16 +1537,6 @@ function refreshPandoraMarket(force) {
         let slots = nextMarket.slots;
         m = player.pandoraMarket2 = nextMarket;
         latest = slots[PANDORA_SLOT_COUNT - 1]; changed = true;
-    } else {
-        let n = 0;
-        while ((nowT - m.lastTick) >= PANDORA_SLOT_TICKS && n < PANDORA_SLOT_COUNT) {
-            m.lastTick += PANDORA_SLOT_TICKS;
-            let i = (m.seq || 0) % PANDORA_SLOT_COUNT;   // round-robin：每格恰好 240 分鐘輪到一次
-            m.slots[i] = _pandoraStock(nowT, m, i);
-            if (m.slots[i].buyOrder) orderHit = m.slots[i];
-            latest = m.slots[i]; m.lastIdx = i;
-            m.seq = (m.seq || 0) + 1; n++; changed = true;
-        }
     }
     if (!changed) return false;
     if (latest) {
@@ -1633,7 +1629,7 @@ function pandoraTipMove(ev) {
 }
 function pandoraTipHide() { let el = document.getElementById('pandora-tooltip'); if (el) el.style.display = 'none'; }
 
-// 繪製黑市面板：24 件商品（桌面 3×8）·只顯示 icon／名稱／價格／購買·能力用 tooltip
+// 繪製黑市面板：300 件商品（桌面 3×100）·只顯示 icon／名稱／價格／購買·能力用 tooltip
 function pandoraRenderMarket(div) {
     if (!div) return;
     _pandoraDiv = div;
@@ -1682,7 +1678,7 @@ function pandoraRenderMarket(div) {
     div.innerHTML = `
     <div class="pandora-market-panel flex flex-col h-full w-full overflow-y-auto">
         <h3 class="pandora-market-title text-center font-bold text-purple-400 drop-shadow-md leading-none shrink-0">潘朵拉黑市
-            <span class="text-slate-400 font-normal">每 10 分鐘輪換 1 件·單件持續 240 分鐘·約 ${nextMin} 分鐘後輪換｜金幣 <span class="text-yellow-300 font-bold">${(player.gold || 0).toLocaleString()}</span>${relicBalance}</span>
+            <span class="text-slate-400 font-normal">每 10 分鐘全面輪換 300 件·單件持續 ${Math.floor(PANDORA_LIFETIME_TICKS / 600)} 分鐘·約 ${nextMin} 分鐘後全面輪換｜金幣 <span class="text-yellow-300 font-bold">${(player.gold || 0).toLocaleString()}</span>${relicBalance}</span>
         </h3>
         <div class="pandora-buy-box shrink-0">
             <div class="pandora-buybar">

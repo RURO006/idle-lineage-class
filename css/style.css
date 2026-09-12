@@ -2517,7 +2517,7 @@ button.classic-skill-cell { cursor:pointer; }
 #interaction-content [class*="bg-slate-"] { background-color: #282730 !important; }
 #interaction-content .list-item { border-color: #514138 !important; }
 
-/* 潘朵拉黑市：桌面固定 3 欄 × 8 列，卡片與收購列保留足夠寬度，避免內容擠成一團。 */
+/* 潘朵拉黑市：桌面固定 3 欄 × 100 列，卡片與收購列保留足夠寬度，避免內容擠成一團。 */
 .pandora-market-panel { padding: 6px 8px 8px; gap: 7px; }
 .pandora-market-title { font-size: 18px; margin-bottom: 1px; }
 .pandora-market-title > span { display: inline-block; margin-left: 5px; font-size: 11px; line-height: 1.45; }
