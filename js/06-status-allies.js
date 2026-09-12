@@ -786,6 +786,7 @@ function buildAlly(slotN) {
     ally._healSkill = '';   // 🤝 v2.6.53 用戶選A：招募「不自動繼承治癒技」→傭兵預設攻擊優先（不再因來源角色有設治癒魔法就一直自動補血、把攻擊技/攻擊魔法回合吃光）。想要傭兵補血→於隊伍面板「治癒魔法」下拉手動指定(setAllyHealSkill·即時生效)。⚠️只影響「新招募」：已在隊傭兵的 _healSkill 早存於存檔·buildAlly 只在招募跑·不受影響（原：(ally.config&&ally.config.selHealSkill)||''）
     ally._convertSkill = (ally.config && ally.config.selConvertSkill) || '';   // 🔄 v2.6.4 轉換技能選擇（快照·可於隊伍面板改）：type:'convert' 或 立方和諧
     ally._healHpPct = 70;   // 🤝 治癒施放 HP% 門檻預設（可於隊伍面板改）
+    ally._potHpPct = allyPotHpPct(ally);   // 🍶 喝水門檻預設為 HP<70%（保留舊存檔的 _hpSafePct／明確設定）
     ally.mp = ally.mmp;   // 召喚時滿魔
     { let _w = (ally.eq && ally.eq.wpn) ? DB.items[ally.eq.wpn.id] : null; ally._rapidfire = (_w && _w.isBow && _w.rapidfire) ? _w.rapidfire : 0; }   // 妖精弓：記錄連射發動機率
     applyMercPrefs(ally);   // 🤝 v3.4.23 同一角色（enSeed）先前的喝水＋技能設定記憶→套回（首次招募無記憶則沿用來源快照預設）
@@ -2697,8 +2698,8 @@ function _supMhp(m) { if (m && m !== player && m.curHp == null && m.form && type
 function _supHeal(m, amt) { let mx = _supMhp(m), v = Math.min(mx, _supHp(m) + amt); if (m === player) m.hp = v; else if (m.curHp != null) m.curHp = v; else m.hp = v; }
 function _supName(m) { if (m === player) return (player && player.name) || '你'; if (m && m.curHp != null) return '協力·' + (m._allyName || '傭兵'); if (m && m.skId) return '召喚·' + (m.form || '召喚物'); if (m && m.city != null) return '護衛·' + (m.form || '城堡護衛'); return '寵物·' + ((m && m.form) || '夥伴'); }   // 🛡️ v3.8.4 護衛以 city 欄位辨識（寵物/召喚物皆無此欄）·否則會被誤標成「寵物·」
 function _supStatuses(m) { return (m && m.statuses) ? m.statuses : ((m && m._statuses) ? m._statuses : null); }   // 玩家/傭兵=statuses·寵物=_statuses
-// 🍶🛡️ v2.6.4：把「喝藥水門檻」與「停耗HP技門檻」拆成兩個獨立設定；皆回退舊 _hpSafePct(相容既有存檔)、再回退 0。
-function allyPotHpPct(ally) { return (ally && ally._potHpPct != null) ? ally._potHpPct : ((ally && ally._hpSafePct != null) ? ally._hpSafePct : 0); }
+// 🍶🛡️ v2.6.4：把「喝藥水門檻」與「停耗HP技門檻」拆成兩個獨立設定；喝水缺省為 70%，舊存檔仍回退 _hpSafePct。
+function allyPotHpPct(ally) { return (ally && ally._potHpPct != null) ? ally._potHpPct : ((ally && ally._hpSafePct != null) ? ally._hpSafePct : 70); }
 function allyHpSkillPct(ally) { return (ally && ally._hpSkillPct != null) ? ally._hpSkillPct : ((ally && ally._hpSafePct != null) ? ally._hpSafePct : 0); }
 function allyCastMpPct(ally) { return (ally && ally._castMpPct != null) ? ally._castMpPct : 0; }   // 🆕 v2.6.27 施法MP門檻（MP% 高於此值才施放攻擊技·0=不限；玩家於傭兵技能設定調整）
 // 🔄 傭兵轉換技能(type:'convert')施放：比照玩家 castSkill convert 分支，改用 ally.curHp/ally.mp。魔力奪取(drain)需目標＋換身判定異常命中吸MP；心靈/魂體轉換直接扣HP換MP。

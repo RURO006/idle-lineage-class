@@ -449,7 +449,7 @@ function _petTombsWrite(key, tombs) {   // 只留最近 300 筆（uid 不重複�
     try { let ks = Object.keys(tombs); if (ks.length > 300) ks.slice(0, ks.length - 300).forEach(k => delete tombs[k]); _lzSet(key + '_rm', _saveWrap(JSON.stringify(tombs))); } catch (e) {}
 }
 function _petPersist(p) {   // 只序列化長生欄位（戰鬥暫存 _ 前綴不入桶）
-    let o = { uid: p.uid, form: p.form, lv: p.lv, exp: p.exp, expReqV: p.expReqV || PET_EXP_REQ_VERSION, mhp: p.mhp, mmp: p.mmp, hp: p.hp, mp: p.mp, outOwner: p.outOwner ? String(p.outOwner) : null, outSlot: p.outSlot == null ? null : String(p.outSlot), outV: p.outV || 0, eqV: p.eqV || 0, potPct: p.potPct || 0, name: p.name || '', locked: !!p.locked };
+    let o = { uid: p.uid, form: p.form, lv: p.lv, exp: p.exp, expReqV: p.expReqV || PET_EXP_REQ_VERSION, mhp: p.mhp, mmp: p.mmp, hp: p.hp, mp: p.mp, outOwner: p.outOwner ? String(p.outOwner) : null, outSlot: p.outSlot == null ? null : String(p.outSlot), outV: p.outV || 0, eqV: p.eqV || 0, potPct: p.potPct != null ? p.potPct : 70, name: p.name || '', locked: !!p.locked };
     // 🩸 v3.5.94 倒地狀態必須入桶（例外於「_ 前綴不入桶」通則）：不存的話重新整理後 _downed 消失、
     //    hp 被夾成 1 ＝ 免費復活。_reviveCd 一併存，避免重整規避 5 秒冷卻。
     if (p._downed) { o._downed = 1; if (p._reviveCd > 0) o._reviveCd = p._reviveCd; }
@@ -530,7 +530,7 @@ function petNewInstance(form, lv) {
     let L = lv || def.lv0 || 5;
     let hp = def.hp0 != null ? def.hp0 : 30, mp = def.mp0 != null ? def.mp0 : 0;
     for (let i = (def.lv0 || 1); i < L; i++) { hp += def.hpUp[0]; mp += def.mpUp[0]; }   // 補起始等級前成長（保守取下限）
-    return { uid: uid(), form: form, lv: L, exp: 0, expReqV: PET_EXP_REQ_VERSION, mhp: hp, mmp: mp, hp: hp, mp: mp, outOwner: null, outSlot: null, outV: 0, eqV: 0, potPct: 0, name: '', locked: false };
+    return { uid: uid(), form: form, lv: L, exp: 0, expReqV: PET_EXP_REQ_VERSION, mhp: hp, mmp: mp, hp: hp, mp: mp, outOwner: null, outSlot: null, outV: 0, eqV: 0, potPct: 70, name: '', locked: false };
 }
 // 捕獲/獲得寵物入保管（滿→false）
 function petStoreAdd(form, srcLabel, deferCommit) {
@@ -1368,11 +1368,13 @@ function applyMobMagicToPet(mob, sk, p) {
     if (p.hp <= 0) _petDown(p);
     petMarkDirty();
 }
+function petPotPct(p) { return (p && p.potPct != null) ? p.potPct : 70; }
 function petTryPotion(p, owner) {   // HP<X% 用治癒藥水（藥水／金幣仍由隊長提供；寵物來源角色提供 CON 加成）
     if (typeof pvpArenaPotionBlocked === 'function' && pvpArenaPotionBlocked()) return;   // 🚫 v3.7.17 決鬥中禁治癒藥水（⚠️寵物不像傭兵會被移到場邊·決鬥時仍在場上→這道閘是真的會擋到東西的那一個）
-    if (!(p.potPct > 0) || p._downed) return;
+    let potPct = petPotPct(p);
+    if (!(potPct > 0) || p._downed) return;
     if ((p._potCd || 0) > 0) { p._potCd--; return; }
-    if (p.hp <= 0 || p.hp > petMhpEff(p) * (p.potPct / 100)) return;
+    if (p.hp <= 0 || p.hp > petMhpEff(p) * (potPct / 100)) return;
     let potSel = (typeof document !== 'undefined') ? document.getElementById('set-pot') : null;
     let potId = potSel ? potSel.value : 'potion_heal';
     let pdef = DB.items[potId];
@@ -1570,7 +1572,7 @@ function renderPetTeamHTML() {
             <div class="flex items-center gap-2">
                 <img src="${thumb}" alt="" style="width:26px;height:22px;object-fit:contain;image-rendering:pixelated;" onerror="this.style.display='none'">
                 <span class="flex-1 min-w-0" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span class="text-emerald-300 font-bold">🐾 ${p.form}</span> <span class="text-amber-300">Lv.${p.lv}</span> <span class="text-slate-400" style="font-size:10px;">EXP ${expPct}%${sourceTag}</span></span>
-                <span class="text-slate-400 whitespace-nowrap" style="font-size:10px;">HP&lt;<input type="number" min="0" max="95" value="${p.potPct || 0}" onchange="petSetPotPct('${p.uid}',this.value)" class="w-11 bg-slate-900 border border-slate-600 rounded px-1 text-center" style="font-size:10px;height:16px;padding-top:0;padding-bottom:0;">%喝水</span>
+                <span class="text-slate-400 whitespace-nowrap" style="font-size:10px;">HP&lt;<input type="number" min="0" max="95" value="${petPotPct(p)}" onchange="petSetPotPct('${p.uid}',this.value)" class="w-11 bg-slate-900 border border-slate-600 rounded px-1 text-center" style="font-size:10px;height:16px;padding-top:0;padding-bottom:0;">%喝水</span>
             </div>
             <div class="compact-dual-vitals" style="margin-top:2px;">
                 <div class="bar-bg compact-team-bar" title="HP ${p.hp}/${_mhpE}"><div class="bar-fill" style="width:${hpPct}%;background:linear-gradient(90deg,#dc2626,#f87171);"></div><div class="bar-text text-white">${p.hp}/${_mhpE}</div></div>
