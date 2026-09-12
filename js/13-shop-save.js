@@ -599,14 +599,12 @@ function importSave(n){
                 return;
             }
             let _u = _saveUnwrap(_raw);
-            if(_u.signed && !_u.ok){ alert('匯入失敗：檔案完整性校驗未通過，可能已被竄改。'); return; }
-            if(!desktopImport && !_u.signed && !confirm('此存檔檔案沒有完整性簽章（可能來自舊版本，或被外部修改/移除簽章）。\n仍要匯入嗎？')) return;
             let text = _u.payload;
             let d;
             try { d = JSON.parse(text); }
             catch(e){ alert('匯入失敗：檔案不是有效的存檔（JSON 解析錯誤）。'); return; }
             if(desktopImport){
-                if(!_u.signed || !_u.ok || !d || d.format !== 'idle-lineage-desktop-save' || d.schema !== 1 || !d.save){
+                if(!d || d.format !== 'idle-lineage-desktop-save' || d.schema !== 1 || !d.save){
                     alert('匯入失敗：安裝版只支援由 Idle Lineage 安裝版匯出的專用存檔，網頁版資料無法匯入。');
                     return;
                 }
