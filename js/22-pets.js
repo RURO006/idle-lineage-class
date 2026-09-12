@@ -253,6 +253,10 @@ function _petMercLeaseParts(key) {
     let m = /^merc:([^:]+):([^:]+)$/.exec(String(key || ''));
     return m ? { employer: 'char:' + m[1], source: 'char:' + m[2] } : null;
 }
+function _petLeaseBelongsToCurrentEmployer(p) {
+    let parts = _petMercLeaseParts(_petOutStateKey(p));
+    return !!(parts && parts.employer === _petCurrentOwnerKey());
+}
 function _petSavedRoleByOwnerKey(ownerKey) {
     if (!ownerKey) return null;
     if (_petCurrentOwnerKey() === ownerKey) return player;
@@ -374,7 +378,10 @@ function _petMergeFromBucket(cur, key) {
             if (f.hp !== undefined) p.hp = f.hp;
         }
         // 其他角色出戰中的寵物，以共用桶為即時狀態來源；本角色不可用過期鏡像覆蓋其 HP/MP/等級。
-        if (_petOutStateKey(p) && _petOutStateKey(p) !== _petCurrentOwnerKey() && _petOutStateKey(f) === _petOutStateKey(p) && _fOutV === (Number(p.outV) || 0)) {
+        // 目前僱主自己的租借寵物例外：它是本隊伍正在使用的寵物，切窗／saveGame 時本地戰鬥進度必須能寫回共用桶，
+        // 否則傭兵寵物會被桶內較舊的 Lv／EXP 覆蓋而倒退。等級／經驗仍先走上方「取領先」，其他分頁的較新進度不會遺失。
+        let _isCurrentMercPet = _petLeaseBelongsToCurrentEmployer(p);
+        if (!_isCurrentMercPet && _petOutStateKey(p) && _petOutStateKey(p) !== _petCurrentOwnerKey() && _petOutStateKey(f) === _petOutStateKey(p) && _fOutV === (Number(p.outV) || 0)) {
             for (let k of ['form','lv','exp','expReqV','mhp','mmp','hp','mp','potPct','name','locked']) if (f[k] !== undefined) p[k] = f[k];
             // 🩸 v3.5.95 倒地狀態必須跟著 hp 一起搬（上面那行搬 hp 卻不搬 _downed → 多分頁可繞過 v3.5.94 的防免費復活）：
             //   分頁A 寵物倒地寫桶(hp:0,_downed:1) → 分頁B 合併只拿到 hp:0、_downed 仍 undefined → 分頁B 下次
