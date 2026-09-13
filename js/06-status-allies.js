@@ -4064,7 +4064,12 @@ function allyEquipItem(slotN, encodedUid) {
         }
     });
     if (!saved && leaderChanged) { leader.inv = _allyCloneInventory(leaderBefore); updateUI(); }
-    if (saved) { calcStats(); updateUI(); openAllyEquipmentManager(slotN); }
+    if (saved) {
+        calcStats();
+        renderTabs(true);   // 🧳 傭兵替換裝備會同步增減隊長背包；強制刷新背包頁，避免內容簽章仍沿用舊畫面
+        updateUI();
+        openAllyEquipmentManager(slotN);
+    }
 }
 function allyUnequipItem(slotN, slot) {
     let leader = player, leaderBefore = _allyCloneInventory(leader.inv), leaderChanged = false;
@@ -4083,7 +4088,12 @@ function allyUnequipItem(slotN, slot) {
         }
     });
     if (!saved && leaderChanged) { leader.inv = _allyCloneInventory(leaderBefore); updateUI(); }
-    if (saved) { calcStats(); updateUI(); openAllyEquipmentManager(slotN); }
+    if (saved) {
+        calcStats();
+        renderTabs(true);   // 🧳 傭兵卸下裝備會把物品退回隊長背包；強制刷新背包頁，讓退回物品立即可見
+        updateUI();
+        openAllyEquipmentManager(slotN);
+    }
 }
 function renderAllyEquipmentManager(div, slotN) {
     let ctx = _allyManagerSource(slotN, true);
