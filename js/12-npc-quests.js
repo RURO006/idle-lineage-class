@@ -416,11 +416,24 @@ function whOneClickDeposit(){
     if(deposited > 0) logSys(`<span class="text-cyan-300 font-bold">一鍵存入：已存入 ${deposited} 項與倉庫現有物品相同的物品${full ? '（倉庫已滿，部分未存入）' : ''}。</span>`);
     else logSys(full ? `<span class="text-red-400">倉庫已滿，無法存入。</span>` : `背包中沒有與倉庫現有物品完全相同的可存入物品。`);
 }
-// 🔧 倉庫一鍵排列：規則與背包「一鍵排列」完全相同（共用 invSortCmp）
+// 🏦 倉庫排序：倉庫畫面可能因搜尋而同時出現三大分類，因此先用倉庫主分類排序，
+//    再交給背包共用排序器處理同分類內的子分類、品質、名稱與鎖定狀態。
+//    分類順序固定為武器 → 防具／飾品 → 道具；只在倉庫操作／顯示端使用，不改變背包排序規則。
+function warehouseCategoryRank(it){
+    let cat = whCategory(it && it.id);
+    return cat === 'weapon' ? 0 : (cat === 'armor' ? 1 : 2);
+}
+const warehouseSortCmp = function(a, b){
+    let ca = warehouseCategoryRank(a), cb = warehouseCategoryRank(b);
+    if(ca !== cb) return ca - cb;
+    return invSortCmp(a, b);
+};
+
+// 🔧 倉庫一鍵排列：規則與倉庫畫面顯示完全相同（分類優先，再共用 invSortCmp）
 function sortWarehouse(){
     let w = loadWarehouse();
     if(!w.items.length){ logSys('<span class="text-slate-400">倉庫沒有物品可排列。</span>'); return; }
-    w.items.sort(invSortCmp);
+    w.items.sort(warehouseSortCmp);
     saveWarehouse(w);
     logSys('<span class="text-cyan-300 font-bold">倉庫已重新排列。</span>');
     let el = document.getElementById('interaction-content'); if(el) renderWarehouseNPC(el);
@@ -503,12 +516,39 @@ function renderWarehouseNPC(div){
     if (!div) return;
     _activePanel = null;   // 倉庫不需自動刷新
     let w = loadWarehouse();
-    let mkBtn = (it, act) => `<button onclick="${act}('${it.uid}')" data-tip-uid="${it.uid}" data-tip-src="${act === 'whWithdraw' ? 'wh' : 'inv'}" class="tip-host btn w-full text-left py-1.5 px-2 text-sm bg-slate-800 hover:bg-slate-700 border-slate-600">${getItemFullName(it)}</button>`;
+    // 🛡️ 倉庫也沿用背包的裝備資格判定；不適用目前角色的裝備仍可存取，但以黯淡／紅色狀態提示辨識。
+    let isWarehouseItemUnusable = (it) => {
+        let d = DB.items[it.id];
+        return !!(d && (d.type === 'wpn' || d.type === 'arm' || d.type === 'acc')
+            && typeof checkCanEquip === 'function' && !checkCanEquip(it));
+    };
+    // 🖼️ 倉庫列沿用背包的圖示、光暈與強化／數量角標；圖示失效時只淡出圖片，文字仍可操作。
+    let mkIcon = (it, unusable) => {
+        let d = DB.items[it.id] || {};
+        let imgUrl = (typeof getIconUrl === 'function') ? getIconUrl(d) : (d.img || '');
+        let glow = (typeof getGlowClass === 'function') ? getGlowClass(it, d) : '';
+        let corner = (Number(it.en) || 0) > 0
+            ? `<span class="warehouse-item-corner warehouse-item-corner--enhance">+${capEn(it.en, d)}</span>`
+            : ((it.cnt || 1) > 1 ? `<span class="warehouse-item-corner">${(it.cnt || 1).toLocaleString()}</span>` : '');
+        let dimStyle = unusable ? ` style="opacity:0.3;filter:grayscale(0.6);"` : '';
+        let img = imgUrl
+            ? `<img src="${_whEscAttr(imgUrl)}" alt="${_whEscAttr(d.n || '未知的物品')}" onerror="this.style.opacity='0';" class="warehouse-item-icon object-contain pointer-events-none ${glow}"${dimStyle}>`
+            : '';
+        return `<span class="warehouse-item-icon-wrap">${img}${corner}</span>`;
+    };
+    let mkBody = (it, suffix, unusable) => `${mkIcon(it, unusable)}<span class="warehouse-item-name">${getItemFullName(it)}${suffix || ''}</span>`;
+    let mkBtn = (it, act) => {
+        let unusable = isWarehouseItemUnusable(it);
+        let status = unusable ? ' <span class="warehouse-item-unusable-label">[無法裝備]</span>' : '';
+        let rowClass = unusable ? ' warehouse-item-unusable' : '';
+        return `<button onclick="${act}('${it.uid}')" data-tip-uid="${it.uid}" data-tip-src="${act === 'whWithdraw' ? 'wh' : 'inv'}" class="tip-host btn warehouse-item-button${rowClass} text-sm bg-slate-800 hover:bg-slate-700 border-slate-600">${mkBody(it, status, unusable)}</button>`;
+    };
     let _searching = _whSearchActive();
-    let _invItems = player.inv.filter(it => !it.lock && (_searching ? whMatchSearch(it) : whMatchFilter(it.id)));   // 🔒 鎖定物品不顯示於倉庫存放清單（用戶要求：鎖定物品存放時不顯示）
-    let _whItems  = w.items.filter(it => _searching ? whMatchSearch(it) : whMatchFilter(it.id));
+    // 🔃 先篩選再對新陣列排序，避免畫面重繪時改動背包或倉庫實際資料順序。
+    let _invItems = player.inv.filter(it => !it.lock && (_searching ? whMatchSearch(it) : whMatchFilter(it.id))).sort(warehouseSortCmp);   // 🔒 鎖定物品不顯示於倉庫存放清單（用戶要求：鎖定物品存放時不顯示）
+    let _whItems  = w.items.filter(it => _searching ? whMatchSearch(it) : whMatchFilter(it.id)).sort(warehouseSortCmp);
     let invHtml = _invItems.length ? _invItems.map(it => WH_NO_STORE.includes(it.id)
-        ? `<div data-tip-uid="${it.uid}" data-tip-src="inv" class="tip-host w-full text-left py-1.5 px-2 text-sm bg-slate-900/60 border border-slate-700 rounded opacity-50 cursor-not-allowed">${getItemFullName(it)} <span class="text-xs text-red-400">（不可存）</span></div>`
+        ? `<div data-tip-uid="${it.uid}" data-tip-src="inv" class="tip-host warehouse-item-disabled text-sm bg-slate-900/60 border border-slate-700 rounded opacity-50 cursor-not-allowed">${mkBody(it, ' <span class="text-xs text-red-400">（不可存）</span>', isWarehouseItemUnusable(it))}</div>`
         : mkBtn(it, 'whDeposit')).join('') : `<div class="text-slate-500 text-sm text-center py-4">${_searching ? '背包沒有符合搜尋的物品' : '此分類背包沒有物品'}</div>`;
     let whHtml  = _whItems.length ? _whItems.map(it => mkBtn(it, 'whWithdraw')).join('') : `<div class="text-slate-500 text-sm text-center py-4">${_searching ? '倉庫沒有符合搜尋的物品' : '此分類倉庫是空的'}</div>`;
     let _oi = document.getElementById('wh-inv-list'), _os = document.getElementById('wh-store-list');
@@ -540,7 +580,7 @@ function renderWarehouseNPC(div){
             <span class="text-slate-300 font-bold ms-2">數量：</span>
             <input id="wh-qty-amt" type="number" min="1" placeholder="全部" value="${_whQtyInput}" oninput="whSetQty(this.value)" title="存入／取出的數量；留空或 0 ＝整疊全部（不再使用跳出式輸入框）" class="w-20 bg-slate-900 border border-slate-600 text-center text-white rounded h-8">
             <button onclick="whOneClickDeposit()" class="btn px-4 text-sm font-bold h-8 inline-flex items-center justify-center ms-auto" style="background: linear-gradient(135deg, #0c4a5e 0%, #0e7490 28%, #0a3d4d 52%, #11657e 76%, #093440 100%); color: #a5f3fc; border-color: #0891b2;" title="把背包中與倉庫現有物品（詞綴+名字+強化值完全相同）的物品自動存入；鎖定物品不動">一鍵存入</button>
-            <button onclick="sortWarehouse()" class="btn px-4 text-sm font-bold h-8 inline-flex items-center justify-center" style="background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 28%, #16294a 52%, #1d4ed8 76%, #101f38 100%); color: #bfdbfe; border-color: #3b82f6;" title="依背包一鍵排列的相同規則整理倉庫物品">一鍵排列</button>
+            <button onclick="sortWarehouse()" class="btn px-4 text-sm font-bold h-8 inline-flex items-center justify-center" style="background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 28%, #16294a 52%, #1d4ed8 76%, #101f38 100%); color: #bfdbfe; border-color: #3b82f6;" title="依武器→防具／飾品→道具分類整理倉庫物品">一鍵排列</button>
         </div>
         <div class="grid grid-cols-2 gap-3">
             <div class="flex flex-col min-h-0">
