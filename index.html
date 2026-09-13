@@ -14,7 +14,7 @@
     <title>放置天堂 - 日出之國</title>
     <link rel="icon" type="image/png" href="assets/favicon.png">   <!-- 🖼️ 瀏覽器分頁圖示(favicon)：把你的圖放到 assets/favicon.png 即生效；可改 href 路徑或副檔名(.ico/.svg) -->
 
-    <link rel="stylesheet" href="css/style.css?v=v3.8.37-all-progress-menu">
+    <link rel="stylesheet" href="css/style.css?v=v3.8.42-google-drive">
     <link rel="stylesheet" href="css/floating-ui.css?v=v3.5.100-audit-tail">
     <link rel="stylesheet" href="css/tailwind-built.css"><!-- 🔧 預編譯 Tailwind（取代執行期 JIT tailwind.js）：只含實際用到的 class，省 407KB runtime + 移除持續掃描 DOM 的成本。置於 style.css 之後以保留原 cascade（utility 平手時勝過自訂 class，與舊 JIT 注入順序一致） -->
 </head>
@@ -37,6 +37,16 @@
             <button onclick="openLoadSelect()" id="btn-start-menu" class="btn text-xl w-72 py-4 bg-blue-700 hover:bg-blue-600 border-blue-500">開始遊戲</button>
             <button onclick="exportAllProgress()" id="btn-export-all" type="button" class="btn load-global-action">匯出所有進度</button>
             <button onclick="importAllProgress()" id="btn-import-all" type="button" class="btn load-global-action">匯入所有進度</button>
+            <section id="cloud-drive-panel" aria-label="Google 雲端存檔">
+                <div id="cloud-drive-status" class="cloud-drive-status" aria-live="polite">Google 雲端：尚未設定 Client ID</div>
+                <div class="cloud-drive-actions">
+                    <button onclick="driveSignIn()" id="btn-google-drive-signin" type="button">使用 Google 登入</button>
+                    <button onclick="driveCloudSave()" id="btn-google-drive-save" type="button" disabled>雲端儲存</button>
+                    <button onclick="driveCloudLoad()" id="btn-google-drive-load" type="button" disabled>雲端讀取</button>
+                    <button onclick="driveSignOut()" id="btn-google-drive-signout" type="button" disabled>登出</button>
+                </div>
+                <div id="cloud-drive-last-sync" class="cloud-drive-last-sync" aria-live="polite">尚未同步</div>
+            </section>
             <button onclick="toggleVfxPref()" id="btn-vfx-toggle" class="btn text-base w-72 py-2.5 bg-slate-700 hover:bg-slate-600 border-slate-500">✨ 戰鬥特效：開啟</button>
             <button onclick="toggleVfxNumPref()" id="btn-vfxnum-toggle" class="btn text-base w-72 py-2.5 bg-slate-700 hover:bg-slate-600 border-slate-500">🔢 傷害數字：開啟</button>
             <p class="text-xs text-slate-500 -mt-2 w-72 text-center">效果較弱/卡頓的裝置可關閉戰鬥特效；「傷害數字」可獨立關閉、其餘特效保留（開始前設定，遊戲中不再提供）</p>
@@ -534,6 +544,22 @@
         </div>
     </div>
 
+    <!-- Google Drive 雲端同步差異比較 -->
+    <div id="cloud-sync-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="cloud-sync-title">
+        <div id="cloud-sync-box">
+            <header id="cloud-sync-header">
+                <h2 id="cloud-sync-title">Google 雲端同步</h2>
+                <button type="button" onclick="cloudSyncCancel()" aria-label="關閉">✕</button>
+            </header>
+            <div id="cloud-sync-summary" aria-live="polite"></div>
+            <footer id="cloud-sync-actions">
+                <button id="cloud-sync-cancel" type="button" onclick="cloudSyncCancel()">取消</button>
+                <button id="cloud-sync-upload" type="button" onclick="cloudSyncUpload()">上傳本機，覆蓋雲端</button>
+                <button id="cloud-sync-download" type="button" onclick="cloudSyncDownload()">下載雲端，覆蓋本機</button>
+            </footer>
+        </div>
+    </div>
+
     </div><!-- /#app-stage -->
 
     <script>
@@ -553,7 +579,7 @@
     </script>
 
     <script src="js/anim-manifest.js?v=v3.8.12-necro-relics"></script>
-    <script src="js/00-data.js?v=v3.8.37-all-progress-menu"></script>
+    <script src="js/00-data.js?v=v3.8.42-google-drive"></script>
 <script src="js/01-drops-config.js?v=v3.8.26-flywing-relics"></script>
 <script src="js/02-stats-recompute.js?v=v3.8.26-flywing-relics"></script>
     <script src="js/03-combat-core.js?v=v3.8.26-flywing-relics"></script>
@@ -585,5 +611,7 @@
 <script src="js/30-siege-v2.js?v=v3.7.89-castle-ring-layout"></script>
 <script src="js/31-castle-guards.js?v=v3.8.23-sherine-set-rework"></script>
 <script src="js/32-threat.js?v=v3.8.23-sherine-set-rework"></script>
+<script src="js/google-drive-config.js?v=v3.8.42-google-drive"></script>
+<script src="js/33-google-drive-save.js?v=v3.8.42-google-drive"></script>
 </body>
 </html>

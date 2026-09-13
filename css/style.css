@@ -1098,6 +1098,50 @@
     box-shadow:inset 0 1px 0 rgba(255,232,167,.22), inset 0 -14px 18px rgba(0,0,0,.28), 0 0 16px rgba(216,179,80,.36);
 }
 #main-menu > p { width:150% !important; margin:1% 0 0 -25% !important; font-size:clamp(9px,.78vw,14px) !important; line-height:1.42; color:#eee2c7; text-shadow:0 1px 3px #000,0 0 3px #000; }
+#cloud-drive-panel {
+    width:100%;
+    box-sizing:border-box;
+    padding:clamp(7px,.72vw,11px);
+    border:1px solid rgba(109,128,164,.62);
+    border-radius:3px;
+    background:linear-gradient(180deg, rgba(17,27,43,.92), rgba(5,9,16,.96));
+    box-shadow:inset 0 1px 0 rgba(226,232,240,.10), 0 0 12px rgba(0,0,0,.58);
+}
+#cloud-drive-status {
+    margin-bottom:clamp(5px,.45vw,8px);
+    color:#cbd5e1;
+    font-size:clamp(9px,.72vw,12px);
+    line-height:1.2;
+    text-align:center;
+    text-shadow:0 1px 2px #000;
+}
+#cloud-drive-status.is-ok { color:#bbf7d0; }
+#cloud-drive-status.is-error { color:#fecaca; }
+#cloud-drive-status.is-busy { color:#fde68a; }
+.cloud-drive-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:clamp(4px,.38vw,7px); }
+.cloud-drive-actions button {
+    min-width:0;
+    padding:clamp(5px,.48vw,8px) 2px;
+    border:1px solid rgba(109,128,164,.72);
+    border-radius:2px;
+    background:rgba(15,23,42,.92);
+    color:#dbeafe;
+    font-family:Georgia,"Times New Roman","Microsoft JhengHei",serif;
+    font-size:clamp(8px,.73vw,12px);
+    font-weight:700;
+    line-height:1.1;
+    cursor:pointer;
+    text-shadow:0 1px 2px #000;
+}
+.cloud-drive-actions button:hover:not(:disabled) { border-color:#bfdbfe; color:#fff; background:#1e3a5f; }
+.cloud-drive-actions button:disabled { opacity:.42; cursor:not-allowed; }
+#cloud-drive-last-sync {
+    margin-top:clamp(5px,.45vw,8px);
+    color:#94a3b8;
+    font-size:clamp(8px,.59vw,10px);
+    line-height:1.15;
+    text-align:center;
+}
 #login-meta-layer { position:absolute; z-index:3; left:5.8%; top:41.5%; width:25.4%; color:#d8c8a2; text-shadow:0 1px 3px #000; }   /* 🔧 v3.0.41 用戶：版權文字縮小+寬度縮短不超框 */
 #login-version { margin-bottom:3%; font-size:clamp(12px,1.05vw,18px) !important; font-weight:700; color:#f2d77f; }
 #login-disclaimer { max-width:none !important; padding:0 !important; margin:0 !important; font-size:clamp(8px,.6vw,11px) !important; line-height:1.45; color:#eee2c7; }
@@ -1917,6 +1961,84 @@ button.classic-skill-cell { cursor:pointer; }
     background:linear-gradient(180deg, rgba(30,41,59,.98), rgba(7,11,18,.97)) !important;
     box-shadow:inset 0 1px 0 rgba(226,232,240,.22), 0 0 16px rgba(100,116,139,.38);
 }
+
+/* ===== Google Drive 全部進度差異比較 ===== */
+#cloud-sync-modal {
+    position:fixed;
+    inset:0;
+    z-index:90;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:clamp(10px,3vw,34px);
+    box-sizing:border-box;
+    background:rgba(2,5,10,.82);
+    backdrop-filter:blur(3px);
+}
+#cloud-sync-modal.hidden { display:none !important; }
+#cloud-sync-box {
+    width:min(980px,100%);
+    max-height:min(92vh,900px);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    border:2px solid rgba(184,146,67,.86);
+    border-radius:8px;
+    background:linear-gradient(180deg,#182233,#0b1019 32%,#080b12);
+    color:#e5e7eb;
+    box-shadow:0 20px 80px rgba(0,0,0,.9),0 0 26px rgba(216,179,80,.16);
+}
+#cloud-sync-header {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:13px 18px;
+    border-bottom:1px solid #475569;
+    background:linear-gradient(180deg,rgba(58,47,18,.88),rgba(36,28,12,.78));
+}
+#cloud-sync-title { margin:0; color:#fde68a; font-size:clamp(17px,2vw,25px); text-shadow:0 1px 3px #000; }
+#cloud-sync-header button {
+    width:34px;
+    height:30px;
+    border:1px solid #64748b;
+    border-radius:4px;
+    background:#1e293b;
+    color:#cbd5e1;
+    cursor:pointer;
+}
+#cloud-sync-header button:hover { color:#fff; border-color:#cbd5e1; }
+#cloud-sync-summary { min-height:0; overflow:auto; padding:14px 18px 8px; }
+.cloud-sync-file-meta,.cloud-sync-overview { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px 18px; color:#cbd5e1; font-size:13px; line-height:1.35; }
+.cloud-sync-overview { align-items:center; margin-top:8px; padding:8px 10px; border:1px solid #334155; border-radius:4px; background:rgba(15,23,42,.78); }
+.cloud-sync-overview strong.is-changed { color:#fbbf24; }
+.cloud-sync-overview strong.is-same { color:#86efac; }
+.cloud-sync-section-title { margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid #475569; color:#fde68a; font-weight:700; }
+.cloud-sync-role-table { border:1px solid #334155; border-radius:4px; overflow:hidden; }
+.cloud-sync-role-head,.cloud-sync-role-row { display:grid; grid-template-columns:76px minmax(0,1fr) minmax(0,1fr); gap:0; }
+.cloud-sync-role-head { color:#f8fafc; background:#1e293b; font-size:12px; font-weight:700; }
+.cloud-sync-role-head span,.cloud-sync-role-row > * { min-width:0; padding:7px 8px; }
+.cloud-sync-role-row { border-top:1px solid #263346; color:#cbd5e1; font-size:12px; line-height:1.42; }
+.cloud-sync-role-row:first-of-type { border-top:0; }
+.cloud-sync-role-row:nth-child(even) { background:rgba(15,23,42,.45); }
+.cloud-sync-role-row.is-changed { background:rgba(120,83,10,.18); }
+.cloud-sync-role-row > b { color:#f8fafc; }
+.cloud-sync-role-name { color:#fef3c7; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cloud-sync-map { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#94a3b8; }
+.cloud-sync-empty { color:#64748b; font-style:italic; }
+.cloud-sync-shared-grid { border:1px solid #334155; border-radius:4px; overflow:hidden; }
+.cloud-sync-shared-row { display:grid; grid-template-columns:220px minmax(0,1fr) minmax(0,1fr); gap:0; border-top:1px solid #263346; color:#cbd5e1; font-size:12px; line-height:1.45; }
+.cloud-sync-shared-row:first-child { border-top:0; }
+.cloud-sync-shared-row:nth-child(even) { background:rgba(15,23,42,.45); }
+.cloud-sync-shared-row.is-changed { background:rgba(120,83,10,.18); }
+.cloud-sync-shared-row > * { min-width:0; padding:7px 8px; overflow-wrap:anywhere; }
+.cloud-sync-shared-row > b { color:#f8fafc; }
+#cloud-sync-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; padding:12px 18px 15px; border-top:1px solid #334155; background:rgba(2,6,23,.7); }
+#cloud-sync-actions button { min-width:150px; padding:9px 12px; border:1px solid #64748b; border-radius:4px; background:#1e293b; color:#e2e8f0; font-weight:700; cursor:pointer; }
+#cloud-sync-actions button:hover:not(:disabled) { border-color:#f8fafc; background:#334155; color:#fff; }
+#cloud-sync-actions button:disabled { opacity:.4; cursor:not-allowed; }
+#cloud-sync-upload { border-color:#3b82f6 !important; color:#bfdbfe !important; }
+#cloud-sync-download { border-color:#22c55e !important; color:#bbf7d0 !important; }
 
 /* 🏘️ v3.2.83 城鎮 NPC 地圖：與狩獵框同尺寸(800×450 16:9)·NPC 動態站位(散佈景深)·hover 顯示名字·點擊開功能 */
 #town-view {
@@ -3415,3 +3537,18 @@ button.classic-skill-cell { cursor:pointer; }
 #tab-clan .clan-dip-war,    .clan-dip-war    { color: #fca5a5; }                                  /* 我方宣戰：淺紅 */
 #tab-clan .clan-dip-enemy,  .clan-dip-enemy  { color: #fca5a5; }                                  /* 對方宣戰：淺紅 */
 #tab-clan .clan-dip-mutual, .clan-dip-mutual { color: #dc2626; text-shadow: 0 0 6px rgba(220,38,38,.55); }   /* 互相宣戰：深紅＋微光 */
+
+@media (max-width: 700px) {
+    #cloud-sync-modal { align-items:flex-start; padding:8px; }
+    #cloud-sync-box { max-height:calc(100dvh - 16px); }
+    #cloud-sync-summary { padding:10px; }
+    #cloud-sync-header { padding:10px 12px; }
+    .cloud-sync-file-meta,.cloud-sync-overview { font-size:11px; }
+    .cloud-sync-role-head,.cloud-sync-role-row { grid-template-columns:50px minmax(0,1fr) minmax(0,1fr); }
+    .cloud-sync-role-head span,.cloud-sync-role-row > * { padding:6px 5px; }
+    .cloud-sync-role-row { font-size:10px; }
+    .cloud-sync-shared-row { grid-template-columns:112px minmax(0,1fr) minmax(0,1fr); font-size:10px; }
+    .cloud-sync-shared-row > * { padding:6px 5px; }
+    #cloud-sync-actions { padding:9px 10px 11px; gap:5px; }
+    #cloud-sync-actions button { min-width:0; flex:1 1 30%; padding:8px 5px; font-size:11px; }
+}
