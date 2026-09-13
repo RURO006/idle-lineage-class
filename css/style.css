@@ -3562,7 +3562,7 @@ button.classic-skill-cell { cursor:pointer; }
 }
 #world-log .wc-ask { color: #e2e8f0; }
 #world-log .wc-ask .wc-me { font-weight: 700; }
-#world-log .wc-answer { color: #e2e8f0; }
+#world-log .wc-answer { color: #e2e8f0; white-space: pre-line; } /* 🐾 CP 排名回覆保留換行，讓 NPC 表格逐列閱讀 */
 #world-log .wc-mock { color: #cbd5e1; opacity: .92; }
 #world-log .wc-sys { color: #94a3b8; font-size: .86em; }
 .wc-player-name { font-weight: 700; font-style: normal; }

@@ -649,8 +649,159 @@ function _wcGotoAnswers(q) {
     } catch (e) {}
     return null;
 }
+
+// ---- 寵物 CP 問答：固定 Lv.60、只比較輸出與血量 ----
+// CP 定義沿用先前比較表：輸出與血量各占 50%，兩項先分別除以全體最高值再取平均。
+// 這裡使用寵物圖鑑與能力曲線即時計算，之後調整 PET_BOOK 數值時，NPC 回覆也會同步更新。
+const _WC_PET_CP_LEVEL = 60;
+const _WC_PET_CP_FALLBACK_G = {
+    phys: { atk0: 3, atkG: 0.52, skillG: 0.55 },
+    spec: { atk0: 2, atkG: 0.40, skillG: 0.65 },
+    mag:  { atk0: 1, atkG: 0.27, skillG: 0.85 }
+};
+let _wcPetCpCache = null;
+
+function _wcPetCpGrowthAvg(def) {
+    let up = (def && def.hpUp) || [0, 0];
+    return ((up[0] || 0) + (up[1] || 0)) / 2;
+}
+function _wcPetCpClamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function _wcPetCpPower(def, lv) {
+    // 與 js/22-pets.js 的 _petPowerCurve 同步；fallback 只在腳本載入順序異常時保底。
+    let g = (typeof _PET_G !== 'undefined' && _PET_G[def.kind]) || _WC_PET_CP_FALLBACK_G[def.kind];
+    if (!g) return { avgAtk: 1, skillFlat: 0 };
+    let t = def.tier || 0;
+    let speedMul = _wcPetCpClamp(Math.sqrt(60 / Math.max(1, def.apm || 1)), 0.80, 1.25);
+    let hpAvg = _wcPetCpGrowthAvg(def);
+    let oldDurableMul = hpAvg <= 5 ? 1.05 : (hpAvg <= 8 ? 1 : (hpAvg <= 11 ? 0.92 : 0.85));
+    let durableMul = t === 2 ? oldDurableMul : 1;
+    let skills = Array.isArray(def.sk) ? def.sk : [];
+    let hasMagic = skills.some(s => s.kind === 'magic');
+    let hasExtra = skills.some(s => s.kind === 'extra');
+    let hasDebuff = skills.some(s => s.kind === 'debuff');
+    let skillMul = !skills.length ? 1.08 : (hasMagic ? 0.72 : (hasExtra ? 0.85 : (hasDebuff ? 0.98 : 1)));
+    let tierAtk = [1, 1.18, 1.35][t] || 1;
+    let capm = Number(def.capm || 0);
+    let castMul = capm > 0 ? _wcPetCpClamp(Math.sqrt(50 / capm), 0.80, 1.25) : 1;
+    let skillTier = [1, 1.15, 1.25][t] || 1;
+    let basicTune = (typeof PET_DMG_TUNE !== 'undefined' && PET_DMG_TUNE.basic) || 1.20;
+    let skillTune = (typeof PET_DMG_TUNE !== 'undefined' && PET_DMG_TUNE.skill) || 1.10;
+    return {
+        avgAtk: Math.max(1, (g.atk0 + lv * g.atkG) * speedMul * durableMul * skillMul * tierAtk * basicTune),
+        skillFlat: Math.floor(lv * g.skillG * castMul * skillTier * skillTune)
+    };
+}
+function _wcPetCpDps(def) {
+    if (!def) return 0;
+    let lv = _WC_PET_CP_LEVEL;
+    let t = def.tier || 0;
+    let power = _wcPetCpPower(def, lv);
+    // 四種蜥蜴的普攻／魔法倍率以同級黃金龍能力為底，再套各自倍率。
+    if ((def.goldenAtk || def.goldenMagic) && typeof PET_BOOK !== 'undefined' && PET_BOOK['黃金龍']) {
+        let golden = _wcPetCpPower(PET_BOOK['黃金龍'], lv);
+        if (def.goldenAtk) power.avgAtk = Math.max(power.avgAtk, golden.avgAtk);
+        if (def.goldenMagic) power.skillFlat = Math.max(power.skillFlat, golden.skillFlat);
+    }
+    let flat = Math.floor(power.avgAtk * 0.35);
+    let dice = Math.max(1, Math.ceil(power.avgAtk * 1.30));
+    let hpAvg = _wcPetCpGrowthAvg(def);
+    let survivalDmgMult = hpAvg <= 5 ? 1.25 : (hpAvg <= 8 ? 1.08 : (hpAvg <= 11 ? 0.90 : 0.75));
+    let tierMult = (typeof PET_TIER_DMG_MULT !== 'undefined' && PET_TIER_DMG_MULT[t]) || [1.14, 1.46, 1.00][t] || 1;
+    let damageMult = (def.goldenAtk || def.goldenMagic) ? 1 : (t === 2 ? 1 : tierMult * survivalDmgMult);
+    let attackMult = Math.max(1, def.goldenAtk || 1);
+    let magicMult = Math.max(1, def.goldenMagic || 1);
+    let apm = Number(def.apm || 0);
+    let capm = Number(def.capm || 0);
+    let dps = (((dice + 1) / 2) + flat) * damageMult * attackMult * apm / 60;
+    let skills = Array.isArray(def.sk) ? def.sk : [];
+    skills.forEach(sk => {
+        // 技能未標權重時，按照實際施放邏輯在同一技能池中均分。
+        let weight = (sk.w || (skills.length ? 100 / skills.length : 100)) / 100;
+        if (sk.kind === 'magic' && capm > 0 && Array.isArray(sk.d)) {
+            let d0 = Number(sk.d[0] || 0), d1 = Number(sk.d[1] || 0);
+            dps += (((d0 + d1) / 2) + power.skillFlat) * damageMult * magicMult * capm / 60 * weight;
+        } else if (sk.kind === 'extra' && capm > 0) {
+            // 額外普攻：爆擊技能固定取滿骰，其餘取一般攻擊平均骰。
+            let extraDice = sk.crit ? dice : (dice + 1) / 2;
+            dps += (extraDice + flat + Number(sk.add || 0)) * damageMult * attackMult * capm / 60 * weight;
+        } else if (sk.kind === 'dot' && capm > 0) {
+            // DoT 以施放間隔估算平均覆蓋率，並沿用戰鬥中的 Lv/5 成長傷害。
+            let dotDmg = Number(sk.dps || 10) + Math.floor(lv / 5);
+            let uptime = Math.min(1, Number(sk.dur || 6) * capm * weight / 60);
+            dps += dotDmg * uptime;
+        }
+    });
+    return dps;
+}
+function _wcPetCpHpAt60(name, def) {
+    let lv = _WC_PET_CP_LEVEL;
+    let growth = _wcPetCpGrowthAvg(def);
+    let startLv = Number(def.lv0 == null ? 1 : def.lv0);
+    let startHp = Number(def.hp0 == null ? 30 : def.hp0);
+    if ((def.tier || 0) === 1) {
+        // 高等型態的實際流程：原型態先補到 Lv100，進化後取 50%，再成長到 Lv60。
+        let source = Object.keys(PET_BOOK).find(k => PET_BOOK[k] && PET_BOOK[k].evo === name);
+        if (!source) return null;
+        let sourceDef = PET_BOOK[source];
+        let sourceHp100 = Number(sourceDef.hp0 == null ? 30 : sourceDef.hp0) + (100 - Number(sourceDef.lv0 || 1)) * _wcPetCpGrowthAvg(sourceDef);
+        return Math.floor(sourceHp100 * 0.5) + (lv - 1) * growth;
+    }
+    if ((def.tier || 0) === 2) return null; // 黃金龍依進化來源不同，無固定單一 HP
+    return startHp + (lv - startLv) * growth;
+}
+function _wcPetCpGoldenHpRange() {
+    let gold = PET_BOOK['黃金龍'];
+    if (!gold) return null;
+    let values = Object.keys(PET_BOOK).map(name => {
+        let def = PET_BOOK[name];
+        if (!def || def.tier !== 0 || !def.evo) return null;
+        let hp100 = Number(def.hp0 == null ? 30 : def.hp0) + (100 - Number(def.lv0 || 1)) * _wcPetCpGrowthAvg(def);
+        return Math.floor(hp100 * 0.5) + (_WC_PET_CP_LEVEL - 1) * _wcPetCpGrowthAvg(gold);
+    }).filter(v => Number.isFinite(v));
+    return values.length ? { min: Math.min(...values), max: Math.max(...values) } : null;
+}
+function _wcPetCpRows() {
+    if (_wcPetCpCache) return _wcPetCpCache;
+    if (typeof PET_BOOK === 'undefined') return [];
+    let rows = Object.keys(PET_BOOK).map(name => {
+        let def = PET_BOOK[name];
+        let hp = _wcPetCpHpAt60(name, def);
+        if (hp == null) return null;
+        return { name: name, dps: _wcPetCpDps(def), hp: hp, cp: 0 };
+    }).filter(row => row && Number.isFinite(row.dps) && Number.isFinite(row.hp));
+    let maxDps = Math.max(...rows.map(row => row.dps));
+    let maxHp = Math.max(...rows.map(row => row.hp));
+    rows.forEach(row => { row.cp = (row.dps / maxDps + row.hp / maxHp) / 2; });
+    rows.sort((a, b) => b.cp - a.cp || b.dps - a.dps || b.hp - a.hp);
+    _wcPetCpCache = rows;
+    return rows;
+}
+function _wcPetCpAnswers(q) {
+    let rows = _wcPetCpRows();
+    if (!rows.length) return ['寵物圖鑑資料還沒載入完成，等一下再問一次。'];
+    let full = /全部|完整|全排名|全排行|全表|所有/.test(String(q || ''));
+    let shown = full ? rows : rows.slice(0, 15);
+    let lines = [`Lv.${_WC_PET_CP_LEVEL} 寵物 CP 排名（輸出／血量各 50%，CP 越高越均衡）`];
+    shown.forEach((row, i) => lines.push(`${i + 1}. ${row.name}｜輸出 ${row.dps.toFixed(1)}｜HP ${row.hp.toFixed(1)}｜CP ${row.cp.toFixed(3)}`));
+    let goldDps = _wcPetCpDps(PET_BOOK['黃金龍']);
+    let goldHp = _wcPetCpGoldenHpRange();
+    if (goldHp) {
+        let maxDps = Math.max(...rows.map(row => row.dps));
+        let maxHp = Math.max(...rows.map(row => row.hp));
+        let goldCpMin = (goldDps / maxDps + goldHp.min / maxHp) / 2;
+        let goldCpMax = (goldDps / maxDps + goldHp.max / maxHp) / 2;
+        lines.push(`黃金龍｜輸出 ${goldDps.toFixed(1)}｜HP 約 ${goldHp.min.toFixed(1)}～${goldHp.max.toFixed(1)}｜CP 約 ${goldCpMin.toFixed(3)}～${goldCpMax.toFixed(3)}（依來源變動，未列固定名次）`);
+    }
+    if (!full) lines.push('以上先列前 15 名；想看完整清單可問「寵物 CP 全排名」。');
+    return [lines.join('\n')];
+}
 function _wcDynamicTopic(q) {
     let compactQuestion = String(q || '').replace(/\s+/g, '');
+    // 🐾 v3.8.48 寵物 CP 問答：先攔截比較／排行意圖，避免落到一般「寵物來源」或嘲笑回覆。
+    let petMentioned = /寵物|夥伴/.test(compactQuestion) || !!_wcFindPet(compactQuestion);
+    let petSourceIntent = /怎麼拿|怎麼抓|哪裡抓|去哪抓|哪裡拿|去哪拿|怎麼獲得|如何獲得|怎麼取得|如何取得|怎麼弄|哪來的|怎麼來|抓得到|哪裡有|怎麼養|怎麼孵|怎麼進化|進化材料/.test(compactQuestion);
+    let petCpIntent = /(cp|ＣＰ|性價比|性價值|排行|排名|比較|輸出.*血量|血量.*輸出|最強|強嗎|強不強|推薦|哪隻|哪只|哪個|誰.*強|輸出|血量|血厚)/i.test(compactQuestion);
+    if (petMentioned && petCpIntent && !petSourceIntent) return { key: 'pet-cp', gen: function () { return _wcPetCpAnswers(q); } };
     if (/(巴仗|巴杖|巴風特魔杖)/.test(compactQuestion) && /(解封|解除封印)/.test(compactQuestion)) {
         return {
             key: 'baphomet-wand-unseal',

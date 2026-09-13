@@ -4,7 +4,7 @@
 //   ・出戰上限 8 隻＋魅力門檻（6/12/15/20）；每隻未倒地寵物各得玩家完整經驗；升級需求＝玩家表 1/10
 //   ・死亡 5 秒後復活卷軸自動復活；返生術可立即復活；回到安全區（非野外）免費復活
 //   ・戰鬥：無敵人在狩獵區八方向閒晃；有敵人自動攻擊最近的敵人（受擊權重 物理4/特殊3/魔法2）
-//   ・進化（包武·Lv30+·僅一般型態·v3.2.63）：一般＋進化果實→對應高等；一般＋勝利果實→黃金龍（兩果實都有→可選）；高等/黃金龍皆最終型態；進化後 Lv1、HP/MP=進化前 50%
+//   ・進化（包武·Lv30+·僅一般型態·v3.2.63）：一般＋進化果實→對應高等；一般＋勝利果實→黃金龍（兩果實都有→可選）；高等/黃金龍皆最終型態；進化時先按原型態補算至玩家滿等（目前 Lv100），再以 HP/MP 的 50% 作為進化後數值
 // ============================================================
 'use strict';
 
@@ -532,6 +532,31 @@ function _petEnforceCarry() {   // 換角色載入：魅力不足/超過8隻→�
         else { used += need; n++; }
     });
 }
+// 🐾 依正常升級規則擲出一次 HP／MP 成長；進化補算與實際升級共用，避免兩套成長規則分歧。
+function petRollGrowth(def) {
+    let hpMin = (def && def.hpUp && def.hpUp[0]) || 0;
+    let hpMax = (def && def.hpUp && def.hpUp[1]) || hpMin;
+    let mpMin = (def && def.mpUp && def.mpUp[0]) || 0;
+    let mpMax = (def && def.mpUp && def.mpUp[1]) || mpMin;
+    return {
+        hp: hpMin + Math.floor(lootRng('petHp') * (hpMax - hpMin + 1)),
+        mp: mpMin + Math.floor(lootRng('petMp') * (mpMax - mpMin + 1))
+    };
+}
+// 🐾 以目前個體已累積的 HP／MP 為起點，虛擬補算到玩家等級上限（目前 Lv100）。
+//    不修改寵物等級或經驗；每次成長仍使用與正常升級相同的 committed RNG。
+function petGrowthAtPlayerMax(p, def) {
+    let fromLv = Math.max(1, Math.floor(Number(p && p.lv) || 1));
+    let targetLv = Math.max(fromLv, 100);   // 沿用玩家等級上限目前的既有判定（Lv100），不另設寵物上限
+    let mhp = Math.max(1, Math.floor(Number(p && p.mhp) || 1));
+    let mmp = Math.max(0, Math.floor(Number(p && p.mmp) || 0));
+    for (let lv = fromLv; lv < targetLv; lv++) {
+        let g = petRollGrowth(def);
+        mhp += g.hp;
+        mmp += g.mp;
+    }
+    return { mhp: mhp, mmp: mmp };
+}
 function petNewInstance(form, lv) {
     let def = PET_BOOK[form]; if (!def) return null;
     let L = lv || def.lv0 || 5;
@@ -940,7 +965,7 @@ function petEvoOptions(p) {
     if (PET_BOOK['黃金龍']) opts.push({ fruitId: 'item_victory_fruit', target: '黃金龍' });   // 勝利果實 → 黃金龍
     return opts;
 }
-function petEvolve(uidv, fruitId) {   // Lv30+；一般型態：進化果實→高等 或 勝利果實→黃金龍（兩果實都有→跳選擇框）；進化後 Lv1、HP/MP=進化前 50%
+function petEvolve(uidv, fruitId) {   // Lv30+；一般型態：進化果實→高等 或 勝利果實→黃金龍（兩果實都有→跳選擇框）；進化時先補算原型態至玩家滿等（目前 Lv100），再取 HP/MP 50%
     let p = _petFindFresh(uidv); if (!p) return;
     if (_petRejectForeignMutation(p)) return;
     let def = PET_BOOK[p.form]; if (!def) return;
@@ -956,15 +981,16 @@ function petEvolve(uidv, fruitId) {   // Lv30+；一般型態：進化果實→�
     if (!chosen) { if (avail.length > 1) petEvoChoose(p, avail); return; }   // 兩種果實都有→讓玩家選
     let fruit = player.inv.find(i => i.id === chosen.fruitId && (i.cnt || 0) > 0);
     if (!fruit) return;
-    let snap = _petMutationSnapshot();
+    let snap = _petMutationSnapshot();   // 先快照：補算會消耗 committed RNG，儲存失敗時需一併還原 lootSeq
+    let maxStats = petGrowthAtPlayerMax(p, def);
     fruit.cnt--; if (fruit.cnt <= 0) player.inv = player.inv.filter(i => i.uid !== fruit.uid);
     let from = p.form;
     p.form = chosen.target; p.lv = 1; p.exp = 0;
-    p.mhp = Math.max(1, Math.floor(p.mhp * 0.5)); p.mmp = Math.max(0, Math.floor(p.mmp * 0.5));
+    p.mhp = Math.max(1, Math.floor(maxStats.mhp * 0.5)); p.mmp = Math.max(0, Math.floor(maxStats.mmp * 0.5));
     p.hp = p.mhp; p.mp = p.mmp;
     petMarkDirty();
     if (!_petCommitMutation(snap)) return;
-    logSys(`<span class="c-legend font-bold">✨ 進化成功！</span><span class="text-amber-200">${from} 進化為 </span><span class="text-amber-300 font-bold">${p.form}</span><span class="text-amber-200">（Lv.1·HP/MP 為進化前的 50%）！</span>`);
+    logSys(`<span class="c-legend font-bold">✨ 進化成功！</span><span class="text-amber-200">${from} 進化為 </span><span class="text-amber-300 font-bold">${p.form}</span><span class="text-amber-200">（Lv.1·先補算原型態至玩家滿等後，HP/MP 取 50%）！</span>`);
     try { renderTabs(); renderSquadPanel(); } catch (e) {}
     let _d = document.getElementById('interaction-content'); if (_d) renderPetStorageNPC(_d);
 }
@@ -985,7 +1011,7 @@ function petEvoChoose(p, avail) {   // 🐉 v3.2.63 兩種果實都有時的進�
             <span class="text-purple-300 font-bold">🐾 ${petDisplayName(p)}：選擇進化方向</span>
             <button onclick="document.getElementById('pet-evo-overlay').remove()" class="btn" style="padding:2px 10px;border:1px solid #475569;border-radius:4px;">✕</button>
         </div>
-        <div class="text-slate-400" style="font-size:11px;margin-bottom:6px;">你同時擁有兩種果實，請選擇要用哪一種進化（進化後 Lv.1·HP/MP 為進化前的 50%）：</div>
+        <div class="text-slate-400" style="font-size:11px;margin-bottom:6px;">你同時擁有兩種果實，請選擇要用哪一種進化（進化後 Lv.1·先補算原型態至玩家滿等後，HP/MP 取 50%）：</div>
         ${btns}
     </div>`;
     document.body.appendChild(ov);
@@ -1099,9 +1125,8 @@ function petsGainExp(playerGain) {
             p.exp -= petExpReq(p.lv);
             p.lv++; up++;
             let def = PET_BOOK[p.form];
-            let hg = def.hpUp[0] + Math.floor(lootRng('petHp') * (def.hpUp[1] - def.hpUp[0] + 1));   // committed RNG：SL 重讀同結果
-            let mg = def.mpUp[0] + Math.floor(lootRng('petMp') * (def.mpUp[1] - def.mpUp[0] + 1));
-            p.mhp += hg; p.mmp += mg; p.hp += hg; p.mp += mg;
+            let g = petRollGrowth(def);
+            p.mhp += g.hp; p.mmp += g.mp; p.hp += g.hp; p.mp += g.mp;
         }
         if (p.lv >= cap) p.exp = 0;
         if (up > 0) { logCombat(`<span class="text-yellow-300 font-bold">寵物 ${petDisplayName(p)} 升級了！目前 Lv.${p.lv}</span>`, 'player-special'); petMarkDirty(); try { renderSquadPanel(); } catch (e) {} }
@@ -1622,7 +1647,7 @@ function renderPetStorageNPC(div, confirmUid) {
     let vicCnt = player.inv.filter(i => i.id === 'item_victory_fruit').reduce((s, i) => s + (i.cnt || 0), 0);
     div.innerHTML = `
     <div class="flex flex-col gap-3 p-1" data-petui="1">
-        <div class="text-slate-300 text-sm leading-relaxed">${hostName}：我幫你照顧捕獲的寵物。<b class="text-amber-300">最多保管 ${PET_STORAGE_MAX} 隻，同一模式的角色共通</b>。<b class="text-emerald-300">亮色列代表本角色正在出戰</b>；自己的傭兵攜帶的寵物可直接按「收回」放回保管，但要修改裝備或進化仍需先解散傭兵；借給其他角色傭兵的寵物仍需由原本角色處理。其他角色正在遊玩中的寵物不可直接轉移，未在遊玩的角色則可按「收回」放回保管後再由你出戰。使用誘捕道具後擊殺對應的動物即可捕獲；點「出戰」讓寵物加入隊伍（最多 ${PET_CARRY_MAX} 隻·依寵物需求消耗魅力）。<b class="text-amber-300">只有「一般型態」的寵物（Lv30 以上）可進化，且有兩條路</b>：用「進化果實」→對應的高等型態，或用「勝利果實」→黃金龍；兩種果實都帶在身上時，進化前可自行選擇要走哪條路。高等型態與黃金龍都是最終型態、不會再進化——身上沒有果實可是不能進化的喔。</div>
+        <div class="text-slate-300 text-sm leading-relaxed">${hostName}：我幫你照顧捕獲的寵物。<b class="text-amber-300">最多保管 ${PET_STORAGE_MAX} 隻，同一模式的角色共通</b>。<b class="text-emerald-300">亮色列代表本角色正在出戰</b>；自己的傭兵攜帶的寵物可直接按「收回」放回保管，但要修改裝備或進化仍需先解散傭兵；借給其他角色傭兵的寵物仍需由原本角色處理。其他角色正在遊玩中的寵物不可直接轉移，未在遊玩的角色則可按「收回」放回保管後再由你出戰。使用誘捕道具後擊殺對應的動物即可捕獲；點「出戰」讓寵物加入隊伍（最多 ${PET_CARRY_MAX} 隻·依寵物需求消耗魅力）。<b class="text-amber-300">只有「一般型態」的寵物（Lv30 以上）可進化，且有兩條路</b>：用「進化果實」→對應的高等型態，或用「勝利果實」→黃金龍；進化時會先依原型態的正常成長規則補算至玩家滿等（目前 Lv100），再將 HP/MP 取 50%。兩種果實都帶在身上時，進化前可自行選擇要走哪條路。高等型態與黃金龍都是最終型態、不會再進化——身上沒有果實可是不能進化的喔。</div>
         <div class="flex items-center gap-4 bg-slate-800/60 border border-slate-600 rounded p-3 text-sm flex-wrap">
             <span>保管：<span class="text-amber-300 font-bold">${list.length}/${PET_STORAGE_MAX}</span></span>
             <span>出戰：<span class="text-emerald-300 font-bold">${petsOutList().length}/${PET_CARRY_MAX}</span></span>
