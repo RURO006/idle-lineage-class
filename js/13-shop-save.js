@@ -506,6 +506,34 @@ function _roleActiveSessionFor(slotN, roleFp){
     _roleWriteObject(ROLE_SESSION_REGISTRY_KEY, reg);
     return Object.keys(reg).map(id => ({ id:id, row:reg[id] })).find(x => x.id !== _roleSessionId && x.row && String(x.row.slot) === String(slotN) && (!roleFp || String(x.row.fp || '') === String(roleFp))) || null;
 }
+// 依寵物名冊的穩定角色識別查詢目前正在遊玩的角色。
+// outOwner 只保存 char:<enSeed>，因此不能用存檔格或名稱判斷；沿用角色心跳的 90 秒 TTL，
+// 背景分頁仍會保留在名冊中，只有關頁清除或心跳逾時才視為閒置。
+function _roleActiveOwnerKeys(){
+    let raw, reg, keys = {};
+    try {
+        raw = _lsGet(ROLE_SESSION_REGISTRY_KEY);
+        reg = raw ? JSON.parse(raw) : {};
+        if(!reg || typeof reg !== 'object' || Array.isArray(reg)) reg = {};
+    } catch(e) {
+        // 活躍分頁名冊讀取失敗時回傳 null，讓寵物保管介面採保守策略，不誤收回別角色寵物。
+        return null;
+    }
+    reg = _rolePruneSessions(reg);
+    _roleWriteObject(ROLE_SESSION_REGISTRY_KEY, reg);
+    Object.keys(reg).forEach(id => {
+        let row = reg[id], fp = row && String(row.fp || ''), seed = fp.split('|')[0];
+        if(seed) keys['char:' + seed] = true;
+    });
+    return keys;
+}
+function roleOwnerIsPlaying(ownerKey){
+    ownerKey = String(ownerKey || '');
+    if(!/^char:[^:]+$/.test(ownerKey)) return false;
+    let keys = _roleActiveOwnerKeys();
+    // keys === null 代表無法可靠判斷，寧可暫時禁止收回，也不要搶走正在遊玩的角色寵物。
+    return keys === null ? true : !!keys[ownerKey];
+}
 function roleCanOpenForPlay(slotN, summary){
     // 登入優先擋「目前已被出借」，再擋同一角色的其他活動分頁。
     // roleFp 包含 enSeed + roleEpoch；同一存檔欄位換成新角色後，不會被舊分頁誤擋。

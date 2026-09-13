@@ -839,6 +839,59 @@ function petDeployToggle(uidv) {
     try { renderSquadPanel(); } catch (e) {}
     let _d = document.getElementById('interaction-content'); if (_d && _d.querySelector('[data-petui]')) renderPetStorageNPC(_d);
 }
+// 從未在遊玩的其他角色或目前角色自己的傭兵手上收回寵物。
+// 其他角色的傭兵租借仍不可直接處理，避免跨僱主任意中斷租借。
+function petRecallToStorage(uidv) {
+    _petRosterResync();
+    let p = _petFind(uidv), owner = _petCurrentOwnerKey(), outKey = _petOutStateKey(p);
+    if (!p || !owner || !outKey || outKey === owner) return;
+    let leaseParts = _petMercLeaseParts(outKey);
+    // merc:<僱主>:<來源> 的第一段是僱主；只有目前角色自己的傭兵才能直接拆除這隻寵物的租借。
+    let ownMercLease = !!leaseParts && leaseParts.employer === owner;
+    if (leaseParts && !ownMercLease) {
+        logSys(`<span class="text-amber-300">${petDisplayName(p)} 正由其他角色的傭兵使用，無法直接收回。</span>`);
+        let _d = document.getElementById('interaction-content'); if (_d && _d.querySelector('[data-petui]')) renderPetStorageNPC(_d);
+        return;
+    }
+    if (!leaseParts && !/^char:[^:]+$/.test(outKey)) {
+        logSys(`<span class="text-amber-300">${petDisplayName(p)} 目前由其他使用狀態占用，無法直接收回。</span>`);
+        let _d = document.getElementById('interaction-content'); if (_d && _d.querySelector('[data-petui]')) renderPetStorageNPC(_d);
+        return;
+    }
+    // 直接角色歸屬必須在點擊後再次查詢，避免畫面開啟期間對方重新開始遊玩而被誤收回。
+    if (!leaseParts && (typeof roleOwnerIsPlaying !== 'function' || roleOwnerIsPlaying(outKey))) {
+        logSys(`<span class="text-amber-300">${petDisplayName(p)} 的原角色目前正在遊玩，無法收回。</span>`);
+        let _d = document.getElementById('interaction-content'); if (_d && _d.querySelector('[data-petui]')) renderPetStorageNPC(_d);
+        return;
+    }
+    let before = JSON.parse(JSON.stringify(petRoster()));
+    // 寵物名冊與目前角色的傭兵快照要一起更新，否則下次刷新傭兵時可能依舊的 UID 再次掛回寵物。
+    let ownMercAlly = ownMercLease ? (player.allies || []).find(a => a && String(a._mercPetLeaseKey || '') === outKey) : null;
+    let ownMercUidsBefore = ownMercAlly && Array.isArray(ownMercAlly._mercPetUids) ? ownMercAlly._mercPetUids.slice() : null;
+    if (ownMercAlly && Array.isArray(ownMercAlly._mercPetUids)) {
+        ownMercAlly._mercPetUids = ownMercAlly._mercPetUids.filter(u => String(u) !== String(p.uid));
+    }
+    p.outOwner = null; p.outSlot = null; p.outV = _petNowStamp();
+    petMarkDirty();
+    // 自己傭兵的租借清單也屬於目前角色存檔，必須和寵物名冊一起提交，避免重載後重新掛回。
+    let committed = ownMercLease
+        ? (typeof saveGame === 'function' && saveGame() === true)
+        : _petCommitRosterOnly(before);
+    if (!committed) {
+        if (ownMercLease) {
+            _petRoster = before;
+            if (ownMercAlly && ownMercUidsBefore) ownMercAlly._mercPetUids = ownMercUidsBefore;
+            petMarkDirty();
+            try { if (typeof saveGame === 'function') saveGame(); } catch (e) {}
+            logSys('<span class="text-red-400 font-bold">寵物與傭兵資料未能同步儲存，本次收回已取消。</span>');
+        }
+        let _d = document.getElementById('interaction-content'); if (_d && _d.querySelector('[data-petui]')) renderPetStorageNPC(_d);
+        return;
+    }
+    logSys(`<span class="text-green-300 font-bold">${petDisplayName(p)} 已從${ownMercLease ? '自己的傭兵' : '未在遊玩的角色'}收回至寵物保管。</span>`);
+    try { renderSquadPanel(); } catch (e) {}
+    let _d = document.getElementById('interaction-content'); if (_d && _d.querySelector('[data-petui]')) renderPetStorageNPC(_d);
+}
 function petRelease(uidv) {   // 第一段：彈出確認
     let p = _petFindFresh(uidv); if (!p) return;
     if (_petRejectForeignMutation(p)) return;
@@ -1494,8 +1547,19 @@ function renderPetStorageNPC(div, confirmUid) {
     let hostName = ((document.getElementById('interaction-npc-name') || {}).innerText || '').trim() || '包武';
     let scrollState = _petStorageScrollState(div);
     let list = petRoster();
+    let currentOwner = _petCurrentOwnerKey();
+    let activeOwnerKeys = typeof _roleActiveOwnerKeys === 'function' ? _roleActiveOwnerKeys() : null;
+    // 只排序顯示副本，不改變名冊原順序，避免影響儲存、戰鬥或既有攜帶上限收斂順序。
+    // 排序優先序：本角色直接出戰 → 本角色傭兵攜帶 → 其他；同組明確以原索引維持穩定順序。
+    // 這裡只建立畫面用副本，絕不重排共用名冊，避免影響跨角色同步、戰鬥與攜帶上限收斂。
+    let displayList = list.map((p, index) => {
+        let isMine = !!currentOwner && String(p.outOwner || '') === currentOwner;
+        let leaseParts = _petMercLeaseParts(p.outOwner);
+        let isOwnMerc = !!leaseParts && leaseParts.employer === currentOwner;
+        return { pet:p, index:index, rank:isMine ? 2 : (isOwnMerc ? 1 : 0) };
+    }).sort((a, b) => (b.rank - a.rank) || (a.index - b.index)).map(x => x.pet);
     let cha = (player.d && player.d.cha) || 0;
-    let rows = list.map(p => {
+    let rows = displayList.map(p => {
         let def = PET_BOOK[p.form] || {};
         let d = petDerive(p) || {};
         let cb = petCharmCombatBonus();
@@ -1505,9 +1569,28 @@ function renderPetStorageNPC(div, confirmUid) {
         let _evoTip = _evoOpts.map(o => (DB.items[o.fruitId] ? DB.items[o.fruitId].n : o.fruitId) + '→' + o.target).join('　或　');
         let thumb = 'assets/anim/' + encodeURIComponent(p.form) + '/d6/idle_0.png';
         let expPct = Math.min(100, Math.floor((p.exp || 0) / petExpReq(p.lv) * 100));
-        let isOut = !!_petCurrentOwnerKey() && String(p.outOwner || '') === _petCurrentOwnerKey();
+        let isOut = !!currentOwner && String(p.outOwner || '') === currentOwner;
         let otherOut = !!_petOutStateKey(p) && !isOut;
-        let leaseParts = _petMercLeaseParts(p.outOwner), otherOutLabel = leaseParts ? '借給傭兵／使用中' : '其他角色出戰中';
+        let leaseParts = _petMercLeaseParts(p.outOwner);
+        let directOther = otherOut && !leaseParts;
+        let ownMercLease = !!leaseParts && leaseParts.employer === currentOwner;
+        // 無法取得活動名冊時採保守策略：其他角色寵物維持鎖定，不開放收回。
+        let otherActive = directOther && (!activeOwnerKeys || !!activeOwnerKeys[String(p.outOwner)]);
+        let inactiveOther = directOther && !!activeOwnerKeys && !otherActive;
+        let canRecall = ownMercLease || inactiveOther;
+        let otherOutLabel = ownMercLease ? '自己的傭兵攜帶·可收回' : (leaseParts ? '其他角色的傭兵使用中' : (inactiveOther ? '其他角色未在遊玩·可收回' : '其他角色出戰中'));
+        let rowClass = isOut ? 'border-emerald-500' : (canRecall ? 'border-amber-700' : 'border-slate-600');
+        let rowStyle = isOut
+            ? 'background:linear-gradient(90deg,rgba(6,95,70,.72),rgba(15,23,42,.94));box-shadow:0 0 12px rgba(16,185,129,.18);'
+            : (canRecall ? 'background:rgba(120,53,15,.18);' : (otherOut ? 'opacity:.5;filter:grayscale(.9);' : ''));
+        let rowTitle = isOut ? '本角色正在出戰' : (ownMercLease ? '自己的傭兵正在攜帶，可直接收回至保管' : (inactiveOther ? '原角色目前未在遊玩，可收回至保管後由本角色使用' : (otherOut ? otherOutLabel + '，無法修改' : '')));
+        let actionHtml = isOut
+            ? `<button onclick="petDeployToggle('${p.uid}')" class="btn px-2 py-1 text-xs font-bold" style="background:linear-gradient(135deg,#374151,#4b5563);color:#e5e7eb;border-color:#6b7280;">收回</button>`
+            : (canRecall
+                ? `<button onclick="petRecallToStorage('${p.uid}')" class="btn px-2 py-1 text-xs font-bold" style="background:linear-gradient(135deg,#92400e,#d97706);color:#fef3c7;border-color:#f59e0b;">收回</button>`
+                : (otherOut
+                    ? `<button disabled class="btn px-2 py-1 text-xs font-bold" style="background:linear-gradient(135deg,#334155,#475569);color:#94a3b8;border-color:#64748b;opacity:.65;">使用中</button>`
+                    : `<button onclick="petDeployToggle('${p.uid}')" class="btn px-2 py-1 text-xs font-bold" style="background:linear-gradient(135deg,#065f46,#059669);color:#a7f3d0;border-color:#10b981;">出戰</button>`));
         if (confirmUid === p.uid && !p.locked) {
             return `<div class="flex items-center justify-between gap-2 bg-red-950/60 border border-red-700 rounded px-2 py-2 text-sm">
                 <span class="text-red-300 font-bold">確定要放生 ${petDisplayName(p)}（Lv.${p.lv}）嗎？放生後將永遠消失！</span>
@@ -1517,8 +1600,8 @@ function renderPetStorageNPC(div, confirmUid) {
                 </span>
             </div>`;
         }
-        return `<div class="flex items-center gap-2 bg-slate-800 border ${isOut ? 'border-emerald-600' : 'border-slate-600'} rounded px-2 py-1.5 text-sm"${otherOut ? ' style="opacity:.5;filter:grayscale(.9);" title="' + otherOutLabel + '，無法修改——請先由傭兵解散或由原角色收回"' : ''}>
-            <button type="button" onclick="petToggleLock('${p.uid}')" ${otherOut ? 'disabled' : ''} class="btn shrink-0" style="width:24px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;font-size:14px;background:${p.locked ? 'linear-gradient(135deg,#713f12,#a16207)' : '#1e293b'};border-color:${p.locked ? '#eab308' : '#475569'};color:${p.locked ? '#fef3c7' : '#94a3b8'};${otherOut ? 'opacity:.4;' : ''}" title="${otherOut ? '其他角色出戰中，無法修改' : (p.locked ? '解除鎖定' : '鎖定寵物並隱藏放生選項')}" aria-label="${p.locked ? '解除鎖定' : '鎖定寵物'}">${p.locked ? '🔒' : '🔓'}</button>
+        return `<div class="flex items-center gap-2 ${isOut ? 'bg-emerald-950/70' : 'bg-slate-800'} border ${rowClass} rounded px-2 py-1.5 text-sm" style="${rowStyle}" title="${rowTitle}">
+            <button type="button" onclick="petToggleLock('${p.uid}')" ${otherOut ? 'disabled' : ''} class="btn shrink-0" style="width:24px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;font-size:14px;background:${p.locked ? 'linear-gradient(135deg,#713f12,#a16207)' : '#1e293b'};border-color:${p.locked ? '#eab308' : '#475569'};color:${p.locked ? '#fef3c7' : '#94a3b8'};${otherOut ? 'opacity:.4;' : ''}" title="${otherOut ? otherOutLabel + '，' + (canRecall ? '只能收回' : '無法修改') : (p.locked ? '解除鎖定' : '鎖定寵物並隱藏放生選項')}" aria-label="${p.locked ? '解除鎖定' : '鎖定寵物'}">${p.locked ? '🔒' : '🔓'}</button>
             <span class="shrink-0" style="width:44px;height:40px;display:flex;align-items:center;justify-content:center;overflow:hidden;"><img src="${thumb}" alt="" style="max-width:44px;max-height:40px;image-rendering:pixelated;" onerror="this.style.display='none'"></span>
             <span class="flex-1 min-w-0">
                 <span class="font-bold ${isOut ? 'text-emerald-300' : 'text-white'}">${p.form}</span>
@@ -1530,7 +1613,7 @@ function renderPetStorageNPC(div, confirmUid) {
                 ${!otherOut && canEvo && p.lv >= 30 ? `<button onclick="petEvolve('${p.uid}')" class="btn px-2 py-1 text-xs font-bold" style="background:linear-gradient(135deg,#713f12,#ca8a04);color:#fef9c3;border-color:#eab308;" title="進化：${_evoTip}（兩種果實都有可選擇）">進化</button>` : ''}
                 <button onclick="petGearOpen('${p.uid}','wpn')" ${otherOut ? 'disabled' : ''} class="btn px-2 py-1 text-xs font-bold" style="border-color:${p.eq && p.eq.wpn ? '#f59e0b' : '#475569'};color:${p.eq && p.eq.wpn ? '#fcd34d' : '#94a3b8'};${otherOut ? 'opacity:.4;' : ''}" title="${p.eq && p.eq.wpn && DB.items[p.eq.wpn.id] ? DB.items[p.eq.wpn.id].n + ((p.eq.wpn.en || 0) > 0 ? '+' + p.eq.wpn.en : '') : '未裝備寵物武器'}">武器</button>
                 <button onclick="petGearOpen('${p.uid}','arm')" ${otherOut ? 'disabled' : ''} class="btn px-2 py-1 text-xs font-bold" style="border-color:${p.eq && p.eq.arm ? '#f59e0b' : '#475569'};color:${p.eq && p.eq.arm ? '#fcd34d' : '#94a3b8'};${otherOut ? 'opacity:.4;' : ''}" title="${p.eq && p.eq.arm && DB.items[p.eq.arm.id] ? DB.items[p.eq.arm.id].n + ((p.eq.arm.en || 0) > 0 ? '+' + p.eq.arm.en : '') : '未裝備寵物防具'}">防具</button>
-                <button onclick="petDeployToggle('${p.uid}')" ${otherOut ? 'disabled' : ''} class="btn px-2 py-1 text-xs font-bold" style="background:linear-gradient(135deg,${isOut ? '#374151,#4b5563' : (otherOut ? '#334155,#475569' : '#065f46,#059669')});color:${isOut ? '#e5e7eb' : (otherOut ? '#94a3b8' : '#a7f3d0')};border-color:${isOut ? '#6b7280' : (otherOut ? '#64748b' : '#10b981')};${otherOut ? 'opacity:.65;' : ''}">${isOut ? '收回' : (otherOut ? '使用中' : '出戰')}</button>
+                ${actionHtml}
                 ${otherOut || p.locked ? '' : `<button onclick="petRelease('${p.uid}')" class="btn px-2 py-1 text-xs font-bold" style="background:linear-gradient(135deg,#7f1d1d,#991b1b);color:#fecaca;border-color:#b91c1c;">放生</button>`}
             </span>
         </div>`;
@@ -1539,7 +1622,7 @@ function renderPetStorageNPC(div, confirmUid) {
     let vicCnt = player.inv.filter(i => i.id === 'item_victory_fruit').reduce((s, i) => s + (i.cnt || 0), 0);
     div.innerHTML = `
     <div class="flex flex-col gap-3 p-1" data-petui="1">
-        <div class="text-slate-300 text-sm leading-relaxed">${hostName}：我幫你照顧捕獲的寵物。<b class="text-amber-300">最多保管 ${PET_STORAGE_MAX} 隻，同一模式的角色共通</b>。借給傭兵的寵物會顯示「借給傭兵／使用中」，<b class="text-amber-200">需先解散傭兵才能修改裝備、進化或收回</b>；其他角色出戰中的寵物仍不可直接轉移。使用誘捕道具後擊殺對應的動物即可捕獲；點「出戰」讓寵物加入隊伍（最多 ${PET_CARRY_MAX} 隻·依寵物需求消耗魅力）。<b class="text-amber-300">只有「一般型態」的寵物（Lv30 以上）可進化，且有兩條路</b>：用「進化果實」→對應的高等型態，或用「勝利果實」→黃金龍；兩種果實都帶在身上時，進化前可自行選擇要走哪條路。高等型態與黃金龍都是最終型態、不會再進化——身上沒有果實可是不能進化的喔。</div>
+        <div class="text-slate-300 text-sm leading-relaxed">${hostName}：我幫你照顧捕獲的寵物。<b class="text-amber-300">最多保管 ${PET_STORAGE_MAX} 隻，同一模式的角色共通</b>。<b class="text-emerald-300">亮色列代表本角色正在出戰</b>；自己的傭兵攜帶的寵物可直接按「收回」放回保管，但要修改裝備或進化仍需先解散傭兵；借給其他角色傭兵的寵物仍需由原本角色處理。其他角色正在遊玩中的寵物不可直接轉移，未在遊玩的角色則可按「收回」放回保管後再由你出戰。使用誘捕道具後擊殺對應的動物即可捕獲；點「出戰」讓寵物加入隊伍（最多 ${PET_CARRY_MAX} 隻·依寵物需求消耗魅力）。<b class="text-amber-300">只有「一般型態」的寵物（Lv30 以上）可進化，且有兩條路</b>：用「進化果實」→對應的高等型態，或用「勝利果實」→黃金龍；兩種果實都帶在身上時，進化前可自行選擇要走哪條路。高等型態與黃金龍都是最終型態、不會再進化——身上沒有果實可是不能進化的喔。</div>
         <div class="flex items-center gap-4 bg-slate-800/60 border border-slate-600 rounded p-3 text-sm flex-wrap">
             <span>保管：<span class="text-amber-300 font-bold">${list.length}/${PET_STORAGE_MAX}</span></span>
             <span>出戰：<span class="text-emerald-300 font-bold">${petsOutList().length}/${PET_CARRY_MAX}</span></span>
