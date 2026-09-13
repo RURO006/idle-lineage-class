@@ -86,7 +86,7 @@ const CRAFT_RECIPES = {
         { result: 'pet_fang_steel',   req: [{ id: 'new_item_180', cnt: 100 }, { id: 'new_item_161', cnt: 1 },  { id: 'gold', cnt: 100000 }] },
         { result: 'pet_fang_ruin',    req: [{ id: 'pet_fang_hound', cnt: 1 }, { id: 'mat_black_mithril', cnt: 10 }, { id: 'new_phoenix_heart', cnt: 1 }, { id: 'gold', cnt: 1000000 }] },
         { result: 'pet_fang_victory', req: [{ id: 'pet_fang_steel', cnt: 1 }, { id: 'new_item_180', cnt: 50 }, { id: 'new_item_161', cnt: 2 }, { id: 'new_item_162', cnt: 1 }, { id: 'gold', cnt: 1000000 }] },
-        { result: 'item_evo_fruit',     req: [{ id: 'new_item_221', cnt: 100 }, { id: 'new_item_154', cnt: 20 }, { id: 'gold', cnt: 20000 }] },   // 進化果實＝光明的鱗片×100＋綠寶石×20＋金幣20000
+        { result: 'item_evo_fruit',     req: [{ id: 'new_item_221', cnt: 5 }, { id: 'new_item_154', cnt: 20 }, { id: 'gold', cnt: 20000 }] },   // 進化果實＝光明的鱗片×5＋綠寶石×20＋金幣20000
         { result: 'item_victory_fruit', req: [{ id: 'item_dragon_heart', cnt: 1 }, { id: 'new_item_159', cnt: 5 }] },                               // 勝利果實＝龍之心×1＋高品質紅寶石×5
         // 🛡️ v3.2.37 寵物防具鍛造（皮→骷髏；鋼鐵→十字/鏈→米索莉·成品可作上位材料·doCraft 自動遞迴補製中間物）
         { result: 'pet_arm_leather', req: [{ id: 'new_item_182', cnt: 20 }, { id: 'gold', cnt: 10000 }] },                                                                                             // 寵物皮盔甲＝高級皮革×20＋金幣10000
