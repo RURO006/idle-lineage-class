@@ -1,7 +1,7 @@
 ﻿// ============================================================
 // js/22-pets.js — 🐾 夥伴系統 v2（v3.2.17 依「夥伴更新.md」全面取代舊項圈系統）
-//   ・寵物＝獨立實體（等級/經驗/HP/MP/技能），非道具；捕捉入「寵物保管」（同模式全角色共通、上限＝PET_STORAGE_MAX·v3.6.37 用戶調整為 32）
-//   ・出戰上限 4 隻＋魅力門檻（6/12/15/20）；每隻未倒地寵物各得玩家完整經驗；升級需求＝玩家表 1/10
+//   ・寵物＝獨立實體（等級/經驗/HP/MP/技能），非道具；捕捉入「寵物保管」（同模式全角色共通、上限＝PET_STORAGE_MAX·v3.8.40 用戶調整為 64）
+//   ・出戰上限 8 隻＋魅力門檻（6/12/15/20）；每隻未倒地寵物各得玩家完整經驗；升級需求＝玩家表 1/10
 //   ・死亡 5 秒後復活卷軸自動復活；返生術可立即復活；回到安全區（非野外）免費復活
 //   ・戰鬥：無敵人在狩獵區八方向閒晃；有敵人自動攻擊最近的敵人（受擊權重 物理4/特殊3/魔法2）
 //   ・進化（包武·Lv30+·僅一般型態·v3.2.63）：一般＋進化果實→對應高等；一般＋勝利果實→黃金龍（兩果實都有→可選）；高等/黃金龍皆最終型態；進化後 Lv1、HP/MP=進化前 50%
@@ -63,8 +63,8 @@ const PET_BOOK = {
 };
 const PET_KIND_WEIGHT = { phys: 4, spec: 3, mag: 2 };   // 受擊權重（怪物一般攻擊選目標）
 const PET_KIND_LABEL = { phys: '物理型', spec: '特殊型', mag: '魔法型' };
-const PET_STORAGE_MAX = 32;   // 寵物保管上限（含出戰中·v3.6.37 用戶調整 20→32；v3.7.7 保管人＝亞丁 包武／古魯丁 奧斯丁·同一個桶）
-const PET_CARRY_MAX = 4;      // 同時出戰上限
+const PET_STORAGE_MAX = 64;   // 寵物保管上限（含出戰中·v3.8.40 用戶調整 32→64；v3.7.7 保管人＝亞丁 包武／古魯丁 奧斯丁·同一個桶）
+const PET_CARRY_MAX = 8;      // 同時出戰上限
 
 // 誘捕 buff（player.buffs 鍵·值=秒）→ 可捕捉怪（key=怪物名精確比對·value=獲得的寵物型態）
 const PET_LURES = {
@@ -518,7 +518,7 @@ function petCombatOwner(p) {
     return _petSavedRoleByOwnerKey(source) || player;
 }
 function petChaUsed() { return petsOutList().reduce((s, p) => s + ((PET_BOOK[p.form] || {}).cha || 6), 0); }
-function _petEnforceCarry() {   // 換角色載入：魅力不足/超過4隻→自動收回超出的
+function _petEnforceCarry() {   // 換角色載入：魅力不足/超過8隻→自動收回超出的
     let out = petsOutList();
     if (!player || !player.cls || !player.d || !Number.isFinite(Number(player.d.cha))) return;   // 載入/重算未完成時不可誤用魅力0收回寵物
     let cha = Number(player.d.cha), used = 0, n = 0;
