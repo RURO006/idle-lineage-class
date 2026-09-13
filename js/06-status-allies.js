@@ -829,6 +829,150 @@ function applyMercPrefs(ally) {
         if (pref._autoBuff && typeof pref._autoBuff === 'object') ally._autoBuff = JSON.parse(JSON.stringify(pref._autoBuff));
     } catch (e) {}
 }
+// ===== 🤝 傭兵自動組隊名單 =====
+// `player.allies` 只代表本次遊戲中的即時戰鬥快照；離開角色時會清空，避免來源角色長期被僱傭鎖住。
+// `mercAutoRoster` 則只保存下次要嘗試招募的存檔位與 enSeed，避免來源存檔換成新角色後誤招募。
+const MERC_AUTO_ROSTER_MAX = 7;
+function _mercAutoRosterNormalize() {
+    if (!player) return [];
+    let raw = Array.isArray(player.mercAutoRoster) ? player.mercAutoRoster : [];
+    let seen = Object.create(null), clean = [];
+    raw.forEach(row => {
+        let slot = String(row && row.slot != null ? row.slot : '');
+        let enSeed = row && typeof row.enSeed === 'string' ? row.enSeed : '';
+        if (!/^[1-8]$/.test(slot) || slot === String(currentSlot) || !enSeed || seen[slot]) return;
+        seen[slot] = true;
+        clean.push({ slot:slot, enSeed:enSeed });
+    });
+    player.mercAutoRoster = clean.slice(0, MERC_AUTO_ROSTER_MAX);
+    return player.mercAutoRoster;
+}
+function _mercAutoRosterRemember(ally) {
+    if (!player || !ally || ally._slot == null || !ally.enSeed) return false;
+    let slot = String(ally._slot), enSeed = String(ally.enSeed);
+    if (!/^[1-8]$/.test(slot) || slot === String(currentSlot)) return false;
+    let list = _mercAutoRosterNormalize(), old = list.find(row => row.slot === slot);
+    if (old && old.enSeed === enSeed) return false;
+    player.mercAutoRoster = list.filter(row => row.slot !== slot);
+    if (player.mercAutoRoster.length >= MERC_AUTO_ROSTER_MAX) return false;
+    player.mercAutoRoster.push({ slot:slot, enSeed:enSeed });
+    return true;
+}
+function _mercAutoRosterForget(slotN) {
+    if (!player) return false;
+    let slot = String(slotN), list = _mercAutoRosterNormalize(), next = list.filter(row => row.slot !== slot);
+    let changed = next.length !== list.length;
+    player.mercAutoRoster = next;
+    return changed;
+}
+function _mercAutoRosterSourceSeed(slotN) {
+    try {
+        let entry = mercSourceGet(String(slotN));
+        return entry && entry.enSeed ? String(entry.enSeed) : '';
+    } catch (e) { return ''; }
+}
+// 匯出／匯入單一角色時，只保留仍指向目前來源角色的名單項目；來源已刪除或換代就丟棄。
+// 來源存檔尚未寫入 enSeed 的舊格式，沿用 _mercSourceSeed 的相容推導值進行驗證。
+function mercAutoRosterValidatedCopy(owner, ownerSlot) {
+    owner = owner || player;
+    ownerSlot = String(ownerSlot == null ? currentSlot : ownerSlot);
+    if (!owner || !Array.isArray(owner.mercAutoRoster)) return [];
+    let seen = Object.create(null), clean = [];
+    owner.mercAutoRoster.forEach(row => {
+        let slot = String(row && row.slot != null ? row.slot : ''), enSeed = row && typeof row.enSeed === 'string' ? row.enSeed : '';
+        if (!/^[1-8]$/.test(slot) || slot === ownerSlot || !enSeed || seen[slot]) return;
+        let source = null;
+        try { source = typeof _roleReadSavePlayer === 'function' ? _roleReadSavePlayer(slot) : null; } catch (e) {}
+        let sourceSeed = source && source.cls ? _mercSourceSeed(source) : '';
+        if (!sourceSeed || String(sourceSeed) !== enSeed) return;
+        seen[slot] = true;
+        clean.push({ slot:slot, enSeed:enSeed });
+    });
+    return clean.slice(0, MERC_AUTO_ROSTER_MAX);
+}
+// 舊版存檔把完整傭兵快照直接寫在 allies；首次載入時轉成自動名單，再釋放舊快照持有的寵物租借。
+// 先保存偏好與任務進度，再清空 allies，確保遷移不會遺失手動設定或傭兵試煉道具。
+function migrateMercAutoRosterOnLoad() {
+    if (!player || !player.cls) return { changed:false, hadAllies:false };
+    let changed = false, active = Array.isArray(player.allies) ? player.allies.filter(Boolean) : [];
+    if (!Array.isArray(player.mercAutoRoster)) { player.mercAutoRoster = []; changed = true; }
+    let beforeRoster = JSON.stringify(player.mercAutoRoster);
+    _mercAutoRosterNormalize();
+    active.forEach(ally => {
+        let sourceEntry = null;
+        try { sourceEntry = mercSourceGet(ally._slot); } catch (e) {}
+        let sourceSeed = sourceEntry && sourceEntry.enSeed ? String(sourceEntry.enSeed) : '';
+        // 來源不存在／無法驗證時不遷移舊任務物品與偏好；換角時同樣不把舊快照資料轉給新角色。
+        if (!sourceEntry || !sourceSeed || (ally.enSeed && String(ally.enSeed) !== sourceSeed)) return;
+        ally.enSeed = sourceSeed;
+        _mercAutoRosterRemember(ally);
+        try { if (typeof _allyQuestLootBucket === 'function') _allyQuestLootBucket(ally); } catch (e) {}
+        snapshotMercPrefs(ally);
+    });
+    active.forEach(ally => {
+        try { if (typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(ally, true); } catch (e) {}
+        try { if (ally && ally._slot != null) mercSourceRelease(ally._slot); } catch (e) {}
+    });
+    if (active.length || JSON.stringify(player.mercAutoRoster) !== beforeRoster) {
+        player.allies = [];
+        changed = true;
+    } else if (!Array.isArray(player.allies)) {
+        player.allies = [];
+        changed = true;
+    }
+    return { changed:changed, hadAllies:active.length > 0 };
+}
+// 離開角色前的共同準備流程：保存來源角色的即時收益與傭兵偏好，釋放寵物租借後清空 allies。
+// 來源保存失敗時不修改隊伍，讓呼叫端保留未落地資料並於下一個既有存檔時機重試。
+function prepareMercenaryAutoExit() {
+    if (!player || !player.cls) return { ok:true, changed:false };
+    let active = Array.isArray(player.allies) ? player.allies.filter(Boolean) : [];
+    if (!active.length) return { ok:true, changed:false };
+    if (typeof flushMercSourceSaves === 'function') {
+        let flushed = flushMercSourceSaves('auto-exit');
+        if (!flushed.ok) return { ok:false, failed:flushed.failed || [] };
+    }
+    let activeSnapshot = active.slice(), rosterSnapshot = JSON.parse(JSON.stringify(player.mercAutoRoster || []));
+    let leaseSnapshots = active.map(ally => ({
+        ally:ally,
+        key:String(ally._mercPetLeaseKey || ''),
+        uids:Array.isArray(ally._mercPetUids) ? ally._mercPetUids.map(String) : []
+    }));
+    active.forEach(ally => {
+        try { if (typeof _allyQuestLootBucket === 'function') _allyQuestLootBucket(ally); } catch (e) {}
+        snapshotMercPrefs(ally);
+        _mercAutoRosterRemember(ally);
+    });
+    active.forEach(ally => {
+        try { if (typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(ally, true); } catch (e) {}
+        try { if (ally && ally._slot != null) mercSourceRelease(ally._slot); } catch (e) {}
+    });
+    player.allies = [];
+    return {
+        ok:true,
+        changed:true,
+        // 隊長存檔或僱傭索引寫入失敗時，重建原隊伍與原寵物租借，讓下一個既有存檔時機可重試。
+        rollback: function() {
+            player.allies = activeSnapshot;
+            player.mercAutoRoster = rosterSnapshot;
+            leaseSnapshots.forEach(row => {
+                let ally = row.ally;
+                ally._mercPetLeaseKey = row.key;
+                ally._mercPetUids = row.uids.slice();
+                if (!row.key || !row.uids.length || typeof petRoster !== 'function') return;
+                let sourceKey = typeof _petOwnerKeyFor === 'function' ? _petOwnerKeyFor(ally) : '';
+                if (!sourceKey) return;
+                let restored = false;
+                petRoster().forEach(pet => {
+                    if (!pet || !row.uids.includes(String(pet.uid)) || String(pet.outOwner || '') !== sourceKey) return;
+                    pet.outOwner = row.key; pet.outSlot = null; pet.outV = _petNowStamp(); restored = true;
+                });
+                if (restored && typeof petMarkDirty === 'function') petMarkDirty();
+            });
+            try { if (typeof petRosterSave === 'function') petRosterSave(); } catch (e) {}
+        }
+    };
+}
 // 掃描出戰傭兵：來源存檔位已換成「不同 enSeed／roleEpoch 的新角色」→ 自動解散；舊傭兵快照收益不轉移。
 //   規則：傭兵與該存檔位當前角色身分皆存在且不同 → 換角 → 解散；任一無 enSeed 則無法判定·保留（避免舊存檔誤判）。
 function purgeReplacedAllies() {
@@ -3557,12 +3701,17 @@ function refreshAllAllies() {
         return n;
     } catch (e) { return 0; }
 }
-function toggleAlly(slotN) {
+function toggleAlly(slotN, expectedEnSeed) {
     slotN = String(slotN);
+    expectedEnSeed = expectedEnSeed ? String(expectedEnSeed) : '';
     if (!player.allies) player.allies = [];
+    _mercAutoRosterNormalize();
     if (isAllyActive(slotN)) {
         let _dis = player.allies.find(a => a && a._slot === slotN);
-        if (_dis) snapshotMercPrefs(_dis);   // 🤝 v3.4.23 解散前記住喝水＋技能設定，供同一角色再次招募時還原
+        if (_dis) {
+            try { if (typeof _allyQuestLootBucket === 'function') _allyQuestLootBucket(_dis); } catch (e) {}
+            snapshotMercPrefs(_dis);   // 🤝 v3.4.23 解散前記住喝水＋技能設定，供同一角色再次招募時還原
+        }
         // 解散前先保存來源快取；失敗時保留傭兵、來源快取與 dirty，讓既有存檔時機重試。
         if (typeof flushMercSourceSaves === 'function') {
             let _flushed = flushMercSourceSaves('dismiss', slotN);
@@ -3571,9 +3720,10 @@ function toggleAlly(slotN) {
                 return;
             }
         }
-        mercSourceRelease(slotN);
         try { if (_dis && typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(_dis, true); } catch (e) {}
+        mercSourceRelease(slotN);
         player.allies = player.allies.filter(a => a && a._slot !== slotN);
+        _mercAutoRosterForget(slotN);   // 手動解散＝同步取消下次自動組隊
         logSys(`協力傭兵（存檔 ${slotN}）已解散，來源角色經驗已保存。`);
     } else {
         let _allyCap = allyActiveCap();
@@ -3602,12 +3752,20 @@ function toggleAlly(slotN) {
             logSys(`<span class="text-red-400">${sum.name || ('存檔 ' + slotN)} 目前已是 ${_hired.employerName} 的傭兵；同一個角色不能同時受僱於兩位僱主，請先由該僱主解散。</span>`);
         }
         else {   // 💰 v3.7.87 用戶指定取消雇用費用：allyCost／金幣檢查／扣款全數移除（招募一律免費）
+            let _autoRosterBeforeHire = _mercAutoRosterNormalize().map(row => ({ slot:row.slot, enSeed:row.enSeed }));
             let _hireResult = (typeof _roleLoanAtomic === 'function') ? _roleLoanAtomic(slotN, sum, () => {
+                // 自動組隊不能只相信進入迴圈前的 summary；鎖內重新讀來源身分，
+                // 避免來源存檔剛被刪除／重建時，把新角色誤當成舊名單成員招募。
+                if (expectedEnSeed) {
+                    let _currentSource = mercSourceGet(slotN), _currentSeed = _currentSource && _currentSource.enSeed;
+                    if (!_currentSeed || String(_currentSeed) !== expectedEnSeed) return { ok:false, reason:'replaced' };
+                }
                 let a = buildAlly(slotN);
                 if (!a) return { ok:false, reason:'source' };
                 a._hiredAt = Date.now();   // 🧑‍🤝‍🧑 v3.7.93 招募時刻＝獨佔權排序依據（先招募者勝）；refreshAllyOnce 重建快照時必須沿用同一個值
                 try { if (typeof mercPetLeaseAttach === 'function') mercPetLeaseAttach(a); } catch (e) {}
                 player.allies.push(a);
+                _mercAutoRosterRemember(a);   // 手動召喚＝同步記住下次自動組隊
                 // 角色鎖涵蓋「檢查＋出借宣告」；先把僱主存檔落地，再檢查同刻競爭者。
                 // 這裡仍只呼叫既有 saveGame()，沒有為招募另增高頻保存機制。
                 if (saveGame() !== true) {
@@ -3620,12 +3778,14 @@ function toggleAlly(slotN) {
                     if (_persistedHire) return { ok:true, ally:a, saveWarning:true };
                     try { if (typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(a, true); } catch (e) {}
                     player.allies = player.allies.filter(x => x !== a);
+                    player.mercAutoRoster = _autoRosterBeforeHire;
                     return { ok:false, reason:'save' };
                 }
                 let _rival = mercSlotHiredByOther(slotN);
                 if (_rival && mercClaimLosesTo(a, _rival)) {
                     try { if (typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(a, true); } catch (e) {}
                     player.allies = player.allies.filter(x => x !== a);
+                    player.mercAutoRoster = _autoRosterBeforeHire;
                     try { saveGame(); } catch (e) {}
                     return { ok:false, reason:'rival', rival:_rival };
                 }
@@ -3634,6 +3794,7 @@ function toggleAlly(slotN) {
             if (!_hireResult.ok) {
                 if (_hireResult.reason === 'busy' || _hireResult.reason === 'active') logSys(`<span class="text-red-400">${sum.name || ('存檔 ' + slotN)} 目前正被其他分頁操作，無法出借。</span>`);
                 else if (_hireResult.reason === 'borrowed' || _hireResult.reason === 'rival') logSys(`<span class="text-red-400">${sum.name || ('存檔 ' + slotN)} 已被其他角色招募，本次招募取消。</span>`);
+                else if (_hireResult.reason === 'replaced') logSys(`<span class="text-amber-300">${sum.name || ('存檔 ' + slotN)} 的來源角色已更換，本次不自動招募。</span>`);
                 else if (_hireResult.reason === 'save') logSys('<span class="text-red-400">招募宣告保存失敗，傭兵未加入隊伍。</span>');
                 else logSys(`<span class="text-red-400">存檔 ${slotN} 沒有可用的角色。</span>`);
             } else if (_hireResult.ally) {
@@ -3643,6 +3804,56 @@ function toggleAlly(slotN) {
     }
     saveGame(); syncMercenaryEmploymentRegistry(true); updateUI();
     let _c = document.getElementById('interaction-content'); if(_c) renderAllyNPC(_c);
+}
+// 登入後依自動名單重建隊伍。每名來源先做一次身分與互斥預檢，真正招募仍沿用 toggleAlly 的短鎖，
+// 因此另一分頁同時登入／招募時只會跳過本次，不會踢掉對方或把舊角色快照寫到新角色。
+function autoAssembleMercenaries() {
+    if (!player || !player.cls) return { joined:0, skipped:[], removed:[] };
+    let beforeRoster = JSON.stringify(player.mercAutoRoster || []);
+    let roster = _mercAutoRosterNormalize().slice(), skipped = [], removed = [], joined = 0;
+    let changed = beforeRoster !== JSON.stringify(player.mercAutoRoster || []);
+    roster.forEach(row => {
+        let slotN = String(row.slot);
+        if (isAllyActive(slotN)) return;
+        if ((player.allies || []).length >= allyActiveCap()) {
+            skipped.push({ name:'存檔 ' + slotN, reason:'cap' });
+            return;
+        }
+        let sum = (typeof slotSummary === 'function') ? slotSummary(slotN) : null;
+        let currentSeed = sum && sum.enSeed ? String(sum.enSeed) : _mercAutoRosterSourceSeed(slotN);
+        // 空槽、換成新角色、或模式不一致都不應該自動招募；移除後等待玩家重新手動指定。
+        if (!sum || !currentSeed || currentSeed !== String(row.enSeed) || !!sum.classic !== !!player.classicMode) {
+            if (_mercAutoRosterForget(slotN)) changed = true;
+            removed.push(sum && sum.name ? sum.name : ('存檔 ' + slotN));
+            return;
+        }
+        let gate = (typeof roleCanBeLoaned === 'function') ? roleCanBeLoaned(slotN, sum) : { ok:true };
+        if (!gate.ok) {
+            skipped.push({ name:sum.name || ('存檔 ' + slotN), reason:gate.reason || 'busy' });
+            return;
+        }
+        let before = (player.allies || []).length;
+        toggleAlly(slotN, row.enSeed);   // 鎖內再次核對 enSeed，來源換代時只跳過本次
+        // 招募失敗後再讀一次輕量摘要；若鎖內競態已確認來源換代／刪除，清掉舊名單，
+        // 若只是來源暫時不可讀而摘要仍是原身分，則保留名單等待下次登入。
+        let postSummary = (typeof slotSummary === 'function') ? slotSummary(slotN) : null;
+        // 舊來源存檔可能尚未寫入 enSeed；此時沿用與 mercSourceGet 相同的相容推導值。
+        let postSeed = postSummary && postSummary.enSeed ? String(postSummary.enSeed) : (postSummary ? _mercAutoRosterSourceSeed(slotN) : '');
+        if (!postSummary || !postSeed || postSeed !== String(row.enSeed)) {
+            if (_mercAutoRosterForget(slotN)) changed = true;
+            removed.push(postSummary && postSummary.name ? postSummary.name : (sum.name || ('存檔 ' + slotN)));
+        } else if ((player.allies || []).length > before) joined++;
+        else skipped.push({ name:sum.name || ('存檔 ' + slotN), reason:'busy' });
+    });
+    // toggleAlly 成功時已保存；只有名單清理或所有來源都被跳過時，這裡補一次保存讓結果落地。
+    if (changed && typeof saveGame === 'function') { try { saveGame(); } catch (e) {} }
+    if (joined || changed) { try { if (typeof syncMercenaryEmploymentRegistry === 'function') syncMercenaryEmploymentRegistry(true); } catch (e) {} }
+    if (removed.length && typeof logSys === 'function') logSys(`<span class="text-amber-300">自動組隊已移除無效來源：${removed.join('、')}；如需使用請重新召喚。</span>`);
+    if (skipped.length && typeof logSys === 'function') {
+        let names = skipped.map(row => row.name).filter(Boolean);
+        logSys(`<span class="text-slate-400">自動組隊暫跳過：${names.join('、')}；來源可用後下次登入會再嘗試。</span>`);
+    }
+    return { joined:joined, skipped:skipped, removed:removed };
 }
 // 🤝 個別解散：只解除指定傭兵；來源角色經驗已在戰鬥中更新，這裡先確保來源快取落地。
 function dismissAlly(slotN) {
@@ -4095,14 +4306,15 @@ function renderAllyNPC(div) {
         </div>`;
     }).join('');
     div.innerHTML = `<div class="flex flex-col gap-3 p-1">
-        <div class="text-slate-300 text-sm leading-relaxed">招募其他存檔位的角色一起作戰，<b class="text-emerald-300">完全免費</b>。協力傭兵戰鬥中不會陣亡，<b class="text-emerald-300">你死亡並回城／原地復活後仍會留在身邊，可使用各傭兵旁的「解散」或「⚠ 全員退出」</b>；存讀檔不會使其消失。法師以魔法、妖精以弓/三重矢、騎士以物理（含看破/殺戮）出手。<br><span class="text-amber-300">同一個角色同時只能受僱於一位僱主——已被其他角色招募走，或正在其他分頁遊玩的存檔，都不能出借。</span>${_capHint}<br><span class="text-slate-400">提示：<b class="text-sky-300">每次進入安全區（含載入存檔回到村莊）都會自動刷新一次隊員資料</b>——從來源角色讀取最新等級、經驗、性向與戰力快照；戰鬥中取得的經驗會直接更新來源角色，並在既有存檔時機批次保存。點「解散」前也會先保存來源角色。</span></div>
+        <div class="text-slate-300 text-sm leading-relaxed">招募其他存檔位的角色一起作戰，<b class="text-emerald-300">完全免費</b>。協力傭兵戰鬥中不會陣亡，<b class="text-emerald-300">你死亡並回城／原地復活後仍會留在身邊</b>；回主選單、重新整理或關閉分頁時會自動退出，下次登入會依記憶名單自動組隊。遊戲中手動「解散」或「召喚」會同步修改下次組隊名單。法師以魔法、妖精以弓/三重矢、騎士以物理（含看破/殺戮）出手。<br><span class="text-amber-300">同一個角色同時只能受僱於一位僱主——已被其他角色招募走，或正在其他分頁遊玩的存檔，都不能出借。</span>${_capHint}<br><span class="text-slate-400">提示：<b class="text-sky-300">每次進入安全區（含載入存檔回到村莊）都會自動刷新一次隊員資料</b>——從來源角色讀取最新等級、經驗、性向與戰力快照；戰鬥中取得的經驗會直接更新來源角色，並在既有存檔時機批次保存。離開前也會先保存來源角色與傭兵偏好。</span></div>
         ${(player.allies||[]).length ? `<div class="flex items-center justify-end gap-2">
             <button onclick="dismissAllAllies()" class="btn py-1 px-3 text-xs font-bold bg-red-950 border-red-700 text-red-200" title="解除目前全部協力傭兵（含異常卡住、找不到對應存檔的傭兵）">⚠ 全員退出（${(player.allies||[]).length}）</button>
         </div>` : ''}
         ${rows}
     </div>`;
 }
-// 🔧 全員退出：無條件清空 player.allies（含 _slot 對不到任何存檔列、卡在場上無法解除的傭兵）。player.allies 是傭兵唯一真相（isAllyActive/alliesTick 皆讀它），清空即完全脫困。
+// 🔧 全員退出：無條件清空 player.allies（含 _slot 對不到任何存檔列、卡在場上無法解除的傭兵）。
+//     這是玩家主動操作，除了清空目前隊伍，也同步清除自動組隊名單；回主選單／關頁的系統退出則保留名單。
 function dismissAllAllies() {
     let n = (player.allies || []).length;
     if (!n) { logSys('<span class="text-slate-400">目前沒有上場的協力傭兵。</span>'); return; }
@@ -4111,8 +4323,14 @@ function dismissAllAllies() {
         let flushed = flushMercSourceSaves('dismiss-all');
         if (!flushed.ok) { logSys('<span class="text-red-400">部分來源角色存檔保存失敗，傭兵未解除；請稍後再試。</span>'); return; }
     }
-    (player.allies || []).forEach(a => { snapshotMercPrefs(a); mercSourceRelease(a && a._slot); try { if (typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(a, true); } catch (e) {} });
+    (player.allies || []).forEach(a => {
+        try { if (typeof _allyQuestLootBucket === 'function') _allyQuestLootBucket(a); } catch (e) {}
+        snapshotMercPrefs(a);
+        try { if (typeof mercPetLeaseRelease === 'function') mercPetLeaseRelease(a, true); } catch (e) {}
+        mercSourceRelease(a && a._slot);
+    });
     player.allies = [];
+    player.mercAutoRoster = [];
     logSys(`<span class="text-amber-300">已解除全部協力傭兵（共 ${n} 名）。</span>`);
     saveGame(); syncMercenaryEmploymentRegistry(true); updateUI();
     let _c = document.getElementById('interaction-content'); if (_c) renderAllyNPC(_c);

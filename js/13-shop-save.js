@@ -650,22 +650,46 @@ setInterval(function(){
     });
     updateLoadInfo();   // 同角色在另一分頁剛登入／被出借時，立即同步停用進入按鈕
 }, 2000);
-// 💾 v3.7.94 關頁／切背景的最終存檔。
+// 💾 v3.8.45 關頁／切背景的最終存檔。
 //    ⚠️ **這段不是可有可無的**：離線掛機（js/27）被移除前，唯一的 visibilitychange／pagehide／beforeunload
 //    存檔掛點在 js/27 裡（_offlinePauseAndSave／_offlineCloseAndSave）。整檔刪掉而不補這段的話，
 //    自動存檔是每 5 分鐘一次 → 關分頁最多會吐掉 5 分鐘進度。
 //    __fb5CloseFlush＝繞過下方 saveGame 的「補跑期間延後存檔」閘（背景節流喚醒間 _tickDebt 常 ≥100ms，
 //    不繞過＝最終進度不落地）。旗標名沿用 v3.7.31，由此處設定與清除。
-function _flushSaveNow(){
+//    回主選單與真正離開頁面會額外要求傭兵自動退出；普通切到背景只保存，不改變隊伍。
+function _flushSaveNow(options){
     if(typeof player === 'undefined' || !player || !player.cls || typeof saveGame !== 'function') return false;
+    let autoExit = !!(options && options.autoExit);
+    let prepared = null;
+    if (autoExit && typeof prepareMercenaryAutoExit === 'function') {
+        prepared = prepareMercenaryAutoExit();
+        if (!prepared || prepared.ok === false) {
+            // 回主選單時讓玩家知道為何沒有離開；關頁／重新整理則不依賴此訊息，資料仍以保留隊伍為優先。
+            if (typeof logSys === 'function' && (typeof document === 'undefined' || !document.hidden)) logSys('<span class="text-red-400">傭兵來源角色存檔保存失敗，隊伍尚未退出；請稍後再試。</span>');
+            return false;
+        }
+    }
     if(typeof window !== 'undefined') window.__fb5CloseFlush = true;
-    try { return saveGame() === true; } catch(e) { return false; }
+    try {
+        let ok = saveGame() === true;
+        // saveGame 成功後才刷新僱傭索引，避免來源角色在隊長存檔失敗時提前被放行。
+        if (ok && autoExit && typeof syncMercenaryEmploymentRegistry === 'function') ok = syncMercenaryEmploymentRegistry(true) === true;
+        if (!ok && autoExit && prepared && typeof prepared.rollback === 'function') {
+            try { prepared.rollback(); } catch (e) {}
+        }
+        return ok;
+    } catch(e) {
+        if (autoExit && prepared && typeof prepared.rollback === 'function') {
+            try { prepared.rollback(); } catch (_e) {}
+        }
+        return false;
+    }
     finally { if(typeof window !== 'undefined') window.__fb5CloseFlush = false; }
 }
 if(typeof document !== 'undefined' && document.addEventListener)
     document.addEventListener('visibilitychange', function(){ if(document.hidden) _flushSaveNow(); });
-if(typeof window !== 'undefined') window.addEventListener('beforeunload', function(){ _flushSaveNow(); _roleSessionForget(); });
-if(typeof window !== 'undefined') window.addEventListener('pagehide', function(){ _flushSaveNow(); _roleSessionForget(); });   // beforeunload 在背景分頁被關閉時常不觸發；bfcache 還原後心跳 2 秒內自動重新註冊
+if(typeof window !== 'undefined') window.addEventListener('beforeunload', function(){ _flushSaveNow({ autoExit:true }); _roleSessionForget(); });
+if(typeof window !== 'undefined') window.addEventListener('pagehide', function(ev){ _flushSaveNow(ev && ev.persisted ? null : { autoExit:true }); _roleSessionForget(); });   // beforeunload 在背景分頁被關閉時常不觸發；bfcache 頁面不退出隊伍，還原後心跳重新註冊
 
 // 🗑️ v3.5.83 移除 openSlotSelect／chooseSlot／slotBackToMenu 與 #slot-select-panel：
 //    主選單唯一入口早已是 openLoadSelect()（index.html「開始遊戲」），舊的兩段式存檔位面板不可達。
@@ -708,6 +732,8 @@ async function exportSave(slot){
             if(_antRef) _p.antharasClearDay = Math.max(Number(_p.antharasClearDay) || 0, antharasRoleClearDay(_antRef));
         }
         _obj.p.allies = [];   // 🤝 傭兵引用其他存檔位；單角色備份一律不攜帶，避免幽靈傭兵
+        // 單角色備份可跨環境還原；自動名單只攜帶仍能由現有存檔核對 enSeed 的來源。
+        if (typeof mercAutoRosterValidatedCopy === 'function') _obj.p.mercAutoRoster = mercAutoRosterValidatedCopy(_p, slotNo);
         let _whRaw = _lzGet(whKey(_p));   // 🎮 指定角色（經典/非經典）對應的倉庫（💾 解壓成明文）
         let _wh = (_whRaw == null) ? { items: [], gold: 0 } : JSON.parse(_whRaw);
         if(!_wh || typeof _wh !== 'object' || !Array.isArray(_wh.items || [])) throw new Error('invalid warehouse');
@@ -945,6 +971,15 @@ function _allProgressValidate(snapshot){
         doc.p.enSeed = String(seed);
         doc.p._roleEpoch = _roleEpoch();
         if(!Array.isArray(doc.p.allies)) doc.p.allies = [];
+        if(doc.p.mercAutoRoster !== undefined && !Array.isArray(doc.p.mercAutoRoster)) throw new Error(`存檔 ${slot} 的自動組隊名單格式不正確`);
+        let autoSlots = new Set();
+        (doc.p.mercAutoRoster || []).forEach(row => {
+            let autoSlot = String(row && row.slot != null ? row.slot : '');
+            if(!row || typeof row !== 'object' || Array.isArray(row) || !/^[1-8]$/.test(autoSlot) || autoSlot === key || autoSlots.has(autoSlot) || typeof row.enSeed !== 'string' || !row.enSeed) throw new Error(`存檔 ${slot} 的自動組隊名單格式不正確`);
+            let source = clean.slots[autoSlot];
+            if(!source || !source.p || !source.p.cls || String(_allProgressRoleSeed(source.p, autoSlot)) !== row.enSeed) throw new Error(`存檔 ${slot} 的自動組隊來源身分不一致`);
+            autoSlots.add(autoSlot);
+        });
         let allySlots = new Set();
         doc.p.allies.forEach(a => {
             let allySlot = String(a && a._slot != null ? a._slot : '');
@@ -1204,6 +1239,17 @@ function importSave(n){
             d.p.enSeed = importSeed;
             d.p._roleEpoch = _roleEpoch();   // 匯入視為新的角色世代，已刪角色的舊分頁不能覆蓋這份匯入檔
             d.p.allies = [];   // 🤝 舊匯出檔也強制移除傭兵；來源角色未一併匯入時不可保留快照
+            if(d.p.mercAutoRoster !== undefined){
+                if(!Array.isArray(d.p.mercAutoRoster)){ alert('匯入失敗：自動組隊名單格式不正確。'); return; }
+                let _autoSlots = new Set();
+                for(let row of d.p.mercAutoRoster){
+                    let _autoSlot = String(row && row.slot != null ? row.slot : '');
+                    if(!row || typeof row !== 'object' || Array.isArray(row) || !/^[1-8]$/.test(_autoSlot) || _autoSlot === String(n) || _autoSlots.has(_autoSlot) || typeof row.enSeed !== 'string' || !row.enSeed){ alert('匯入失敗：自動組隊名單格式不正確。'); return; }
+                    _autoSlots.add(_autoSlot);
+                }
+                // 單角色檔不包含來源角色本體；只有目前環境能核對 enSeed 的項目才可保留。
+                if (typeof mercAutoRosterValidatedCopy === 'function') d.p.mercAutoRoster = mercAutoRosterValidatedCopy(d.p, n);
+            }
             // 🔧 抽出倉庫資料（若匯入檔含 wh）；🐾 v3.2.75 也抽出寵物名冊（pets）；龍之鑽石同為共用資料。
             //    寫入存檔位時不保留這些匯出專用欄位（它們不進角色存檔）。
             let whData = d.wh;
@@ -1422,7 +1468,7 @@ function loadBackToMenu(){
 
 function returnToCharacterSelect(){
     if(typeof player === 'undefined' || !player || !player.cls) return false;
-    const _saveOk = _flushSaveNow();   // 🗑️ v3.7.94 原本走 js/27 的 offlinePrepareCharacterSelect（存檔＋寫離線快照）；離線掛機移除後只留最終存檔
+    const _saveOk = _flushSaveNow({ autoExit:true });   // 🗑️ v3.7.94 原本走 js/27 的 offlinePrepareCharacterSelect（存檔＋寫離線快照）；離線掛機移除後只留最終存檔
 
     // 存檔成功後不再把舊角色物件留在選角畫面。否則匯出／背景事件仍可能
     // 看到 player.cls，拿已離開遊戲的記憶體角色再跑一次 saveGame，觸發角色防寫入鎖。
@@ -1432,6 +1478,7 @@ function returnToCharacterSelect(){
         try { if(typeof freshPlayerState === 'function') player = freshPlayerState(); } catch(e) {}
         try { if(typeof freshMapState === 'function') mapState = freshMapState(); } catch(e) {}
     }
+    if (!_saveOk) return false;
 
     if(typeof stopGameTimers === 'function') stopGameTimers();
     if(typeof state !== 'undefined' && state) state.running = false;
@@ -2227,6 +2274,8 @@ function loadGame() {
     if (typeof mercSourceClearCache === 'function') mercSourceClearCache();
     _uiConfigReady = false;   // 🛡️ 審計#1：載入期間 DOM 仍是上一個畫面/預設值，禁止 saveGame 以它重建 config
     let _masteryRepair = null;
+    let _mercAutoLoad = { changed:false, hadAllies:false };
+    let _mercAutoMigrationSaved = false;
     // 🐾 v3.3.16 換角色前：先把上一角色未存的寵物進度 flush 進共用桶，再失效記憶體快取→新角色 petRoster() 從桶重載（防跨角色髒鏡像互洗裝備/出戰）。
     try { if (typeof _petRosterDirty !== 'undefined' && _petRosterDirty && player && player.cls && typeof petRosterSave === 'function') petRosterSave(); } catch (e) {}
     try { if (typeof _petRosterKey !== 'undefined') _petRosterKey = null; } catch (e) {}
@@ -2441,6 +2490,9 @@ function loadGame() {
         // 🔧 架構#6：集中式預設值合併（放在所有「轉換型」遷移之後，作為缺漏欄位的統一保底）。
         // 日後新增欄位只需登錄於 SAVE_DEFAULTS；上方逐項 if(undefined) 為歷史遷移，不必再增列。
         applySaveDefaults(player);
+        // 🤝 v3.8.45：舊存檔的 allies 是上次離開時仍保留的實際隊伍，先遷移成自動名單並釋放舊租借，
+        //     待登入完成、角色 session 登記後再依名單重新招募，避免來源角色繼續被舊僱傭關係鎖住。
+        try { if (typeof migrateMercAutoRosterOnLoad === 'function') _mercAutoLoad = migrateMercAutoRosterOnLoad(); } catch (e) { _mercAutoLoad = { changed:false, hadAllies:false }; }
         let _levelPointRepair = repairLevelUpPoints(player);
         (player.allies || []).forEach(a => { _levelPointRepair += repairLevelUpPoints(a); });
         if (_levelPointRepair > 0) logSys(`<span class="text-emerald-300 font-bold">已補回 ${_levelPointRepair} 點以前未取得的升級能力點。</span>`);
@@ -2556,6 +2608,18 @@ function loadGame() {
         }
         if ((_masteryRepair && _masteryRepair.changed) || _levelPointRepair > 0) saveGame();   // 修復後立即固化，避免重載時再次遇到同一壞狀態
         try { if (typeof purgeReplacedAllies === 'function') purgeReplacedAllies(); } catch (e) {}   // 🤝 v3.4.23 載入後掃描：出戰傭兵的來源存檔位若已換成新角色（enSeed 不同）→ 自動解散
+        // 舊版 allies 遷移後，先把「空隊伍＋自動名單」寫回並移除舊僱傭宣告，
+        // 否則自動組隊掃描其他存檔時會把目前角色自己視為來源的現任僱主而跳過第一次招募。
+        if (_mercAutoLoad.changed && typeof saveGame === 'function') {
+            try {
+                _mercAutoMigrationSaved = saveGame() === true;
+                if (_mercAutoMigrationSaved && typeof syncMercenaryEmploymentRegistry === 'function') syncMercenaryEmploymentRegistry(true);
+            } catch (e) {}
+        }
+        try { if (typeof autoAssembleMercenaries === 'function') autoAssembleMercenaries(); } catch (e) {}
+        // 遷移可能只清除了舊隊伍、沒有任何可用來源可重新招募；仍要把空 allies 與新名單寫回，
+        // 否則下一次載入還會再次走舊版遷移路徑。
+        if (_mercAutoLoad.changed && !_mercAutoMigrationSaved && typeof saveGame === 'function') { try { saveGame(); } catch (e) {} }
         return true;
     }
     return false;
