@@ -2600,7 +2600,13 @@ function renderSquadPanel() {
     let _guards = (typeof guardV2List === 'function' && player && player.cls) ? guardV2List() : [];   // 🏰 城堡護衛（可招募的協同角色）
     if (!allies.length && !_pets.length && !_summonVisible && !_guards.length) { panel.style.display = 'none'; _squadSigTeam = ''; _squadSigSkill = ''; return; }
     panel.style.display = '';
-    let _sigAllies = allies.map(a => a._slot + ':' + (a._allyName || '') + ':' + (a._downed ? 'D' : '') + ':' + (a.lv || 1)).join('|');
+    // 傭兵的顯示資料一律從來源角色快取讀取；a 只是戰鬥快照。
+    // 經驗增加時不改 squad signature，因此不會重建整個隊伍 DOM，只由下方每幀更新既有進度條。
+    let _allyProgress = a => {
+        let source = (typeof mercSourceForAlly === 'function') ? mercSourceForAlly(a) : a;
+        return { lv:Math.max(1, Math.floor(Number(source && source.lv) || 1)), exp:Math.max(0, Number(source && source.exp) || 0) };
+    };
+    let _sigAllies = allies.map(a => a._slot + ':' + (a._allyName || '') + ':' + (a._downed ? 'D' : '') + ':' + _allyProgress(a).lv).join('|');
     let sigTeam = _sigAllies
         + '||P:' + _pets.map(p => p.uid + ':' + p.lv + ':' + (p._downed ? 'D' : '') + ':' + Math.round(p.hp / Math.max(1, p.mhp) * 20) + ':' + Math.round(p.mp / Math.max(1, p.mmp) * 20) + ':' + Math.round((p.exp || 0) / Math.max(1, petExpReq(p.lv)) * 20) + ':' + petPotPct(p) + ':' + Math.ceil((p._reviveCd || 0) / 10)).join('|')
         + '||S:' + ((typeof summonTeamSignature === 'function') ? summonTeamSignature() : '')   // team 分頁：名單/倒地/等級＋寵物/召喚血量(5%階)變動才重建
@@ -2612,9 +2618,10 @@ function renderSquadPanel() {
         _squadSigTeam = sigTeam;
         document.getElementById('squad-tab-team').innerHTML = allies.map(a => {
             let s = a._slot;
+            let _progress = _allyProgress(a);
             if (a._downed) {   // 🤝 Phase 3：倒地→灰顯卡片。返生術＝手動鈕（消耗MP·無冷卻立即）；復活卷軸＝v2.6.6 改自動（15秒冷卻結束身上有卷軸即自動使用），此處只顯示狀態文字（不可點）。每幀更新。
                 return `<div class="bg-slate-900/70 border border-red-900 rounded p-2 flex items-center justify-between gap-2" style="opacity:0.85;">
-                    <div class="text-sm"><span class="font-bold text-slate-400">${a._allyName}</span> <span class="text-slate-600 text-xs">Lv.${a.lv || 1}</span> <span class="text-red-400 font-bold">【倒地】</span></div>
+                    <div class="text-sm"><span class="font-bold text-slate-400">${a._allyName}</span> <span class="text-slate-600 text-xs">Lv.${_progress.lv}</span> <span class="text-red-400 font-bold">【倒地】</span></div>
                     <div class="flex items-center gap-1 shrink-0">
                         <button id="squad-rez-${s}" class="py-1 px-2 text-xs font-bold rounded border whitespace-nowrap" style="background:#1e3a8a;border-color:#3b82f6;color:#bfdbfe;" onclick="reviveMercenary('${s}','rez')">返生術</button>
                         <span id="squad-revive-${s}" class="py-1 px-2 text-xs font-bold rounded border whitespace-nowrap" style="background:#3f1d1d;border-color:#7f1d1d;color:#fca5a5;cursor:default;" title="倒地 15 秒後，若身上有復活卷軸將自動使用。">卷軸</span>
@@ -2624,7 +2631,7 @@ function renderSquadPanel() {
             return `<div class="bg-slate-800/60 border border-slate-600 rounded p-2 flex flex-col gap-1 ally-compact-card">
                 <div class="ally-compact-head text-sm">
                     <span class="font-bold text-amber-200 ally-compact-name">${a._allyName}</span>
-                    <span class="text-slate-400 text-xs whitespace-nowrap">Lv.${a.lv || 1}</span>
+                    <span class="text-slate-400 text-xs whitespace-nowrap">Lv.${_progress.lv}</span>
                     <div class="bar-bg ally-exp-bar"><div id="squad-exp-${s}" class="bar-fill bg-yellow-500" style="width:0%"></div><div id="squad-exp-txt-${s}" class="bar-text text-white">0%</div></div>
                 </div>
                 <div id="squad-status-${s}" class="text-xs" style="color:#fca5a5;line-height:1.2;"></div>
@@ -2644,12 +2651,13 @@ function renderSquadPanel() {
         _squadSigSkill = sigSkill;
         document.getElementById('squad-tab-skill').innerHTML = allies.map(a => {
             let s = a._slot;
+            let _progress = _allyProgress(a);
             let hpPct = (a._healHpPct != null) ? a._healHpPct : 70;
             let potPct = allyPotHpPct(a);
             let skillPct = (a._hpSkillPct != null) ? a._hpSkillPct : ((a._hpSafePct != null) ? a._hpSafePct : 0);
             let mpPct = (a._castMpPct != null) ? a._castMpPct : 0;   // 🆕 v2.6.27 施法MP門檻
             return `<div class="bg-slate-800/60 border border-slate-600 rounded p-2 flex flex-col gap-1">
-                <div class="text-sm font-bold text-amber-200">${a._allyName} <span class="text-slate-500 text-xs">Lv.${a.lv || 1}</span></div>
+                <div class="text-sm font-bold text-amber-200">${a._allyName} <span class="text-slate-500 text-xs">Lv.${_progress.lv}</span></div>
                 <div class="flex items-center gap-1 text-xs"><span class="text-cyan-400 font-bold shrink-0" style="width:3rem;">攻擊技能</span><select class="flex-1 min-w-0 bg-slate-900 border border-slate-600 text-cyan-300 px-1 py-1 rounded text-xs outline-none" onchange="setAllyAtkSkill('${s}', this.value)">${_allySkillOptions(a, 'atk', a._atkSkill || '')}</select><span class="shrink-0 flex items-center text-blue-300 whitespace-nowrap" title="MP％ 高於此值才施放攻擊技（0 = 不限）。">MP&gt;<input type="number" min="0" max="100" value="${mpPct}" class="w-10 bg-slate-900 border border-blue-700 text-center text-white rounded" onchange="setAllyCastMp('${s}', this.value)">%</span></div>
                 <div class="flex items-center gap-1 text-xs"><span class="text-green-400 font-bold shrink-0" style="width:3rem;">治癒魔法</span><select class="flex-1 min-w-0 bg-slate-900 border border-slate-600 text-green-300 px-1 py-1 rounded text-xs outline-none" onchange="setAllyHealSkill('${s}', this.value)">${_allySkillOptions(a, 'heal', a._healSkill || '')}</select><span class="shrink-0 flex items-center text-green-300 whitespace-nowrap" title="HP％ 低於此值才施放治癒。">HP&lt;<input type="number" min="0" max="100" value="${hpPct}" class="w-10 bg-slate-900 border border-green-700 text-center text-white rounded" onchange="setAllyHealHp('${s}', this.value)">%</span></div>
                 <div class="flex items-center gap-1 text-xs"><span class="text-purple-400 font-bold shrink-0" style="width:3rem;">轉換技能</span><select class="flex-1 min-w-0 bg-slate-900 border border-slate-600 text-purple-300 px-1 py-1 rounded text-xs outline-none" onchange="setAllyConvertSkill('${s}', this.value)">${_allySkillOptions(a, 'convert', a._convertSkill || '')}</select></div>
@@ -2696,8 +2704,9 @@ function renderSquadPanel() {
             let t = document.getElementById('squad-mp-txt-' + s); if (t) t.innerText = cur + '/' + mmp;
         }
         if ((el = document.getElementById('squad-exp-' + s))) {
-            let req = (typeof getExpReq === 'function') ? getExpReq(a.lv || 1) : 0;
-            let pct = (req > 0 && isFinite(req)) ? ((a.exp || 0) / req) * 100 : 0;
+            let _progress = _allyProgress(a), req = (typeof getExpReq === 'function') ? getExpReq(_progress.lv) : 0;
+            // 百分比直接使用來源角色的 exp / 該等級需求經驗；不再以招募時的 0% 或 _expGained 計算。
+            let pct = (req > 0 && isFinite(req)) ? (_progress.exp / req) * 100 : 0;
             el.style.width = Math.min(100, Math.max(0, pct)) + '%';
             let t = document.getElementById('squad-exp-txt-' + s); if (t) t.innerText = pct >= 100 ? '滿' : pct.toFixed(1) + '%';   // 不即時升級→累積超過一級顯「滿」（解雇可回收）
         }

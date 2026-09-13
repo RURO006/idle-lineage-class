@@ -694,19 +694,7 @@
         if (!amount || !Array.isArray(player.allies)) return;
         player.allies.forEach(a => {
             if (!a || a._downed || (a.lv || 1) >= 100) return;
-            a.exp = Math.max(0, Number(a.exp) || 0) + amount;
-            a._expGained = Math.max(0, Number(a._expGained) || 0) + amount;
-            let levels = 0;
-            while ((a.lv || 1) < 100 && a.exp >= getExpReq(a.lv)) {
-                a.exp -= getExpReq(a.lv);
-                a.lv++;
-                a.bonus = (a.bonus || 0) + 1;
-                levels++;
-            }
-            if ((a.lv || 1) >= 100) a.exp = 0;
-            if (levels > 0 && typeof _allyLevelRecompute === 'function') {
-                try { _allyLevelRecompute(a); } catch (e) {}
-            }
+            if (typeof mercSourceGainExp === 'function') mercSourceGainExp(a, amount);
         });
     }
 

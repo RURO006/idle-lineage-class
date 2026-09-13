@@ -322,7 +322,7 @@ function migrateSaves(){
 function _slotBadgeMeta(n, sum){
     if(!sum) return null;
     // 🧑‍🤝‍🧑 v3.7.85 「擔任傭兵」徽章：僱傭關係會變·每次刷新現查·不快取結果
-    return { slot: n, mercWho: { cls: sum.rawCls, name: sum.name, enSeed: sum.enSeed, classic: !!sum.classic } };
+    return { slot: n, mercWho: { cls: sum.rawCls, name: sum.name, enSeed: sum.enSeed, roleEpoch: sum.roleEpoch, classic: !!sum.classic } };
 }
 // 🧑‍🤝‍🧑 v3.7.85 該存檔位角色是否正受僱為別人的傭兵（受僱＝只能待安全區）
 function _slotPartyStatusNow(meta){
@@ -349,6 +349,7 @@ function _summaryFromRaw(s){
             classic: !!p.classicMode,
             avatar: p.avatar || null,
             enSeed: p.enSeed || '',
+            roleEpoch: String(p._roleEpoch || 'legacy'),
             roleFp: _roleFingerprint(p),
             pledge: (typeof clanNameForPlayer === 'function' ? clanNameForPlayer(p) : '') || '',
             hp: p.hp || 0,
@@ -369,6 +370,8 @@ const ROLE_SESSION_REGISTRY_KEY = 'fb5_active_role_sessions_v1';
 const ROLE_DELETED_GUARD_KEY = 'fb5_deleted_role_guards_v1';
 const ROLE_SESSION_TTL_MS = 90000;   // ⏱️ v3.6.97 8秒→90秒：背景分頁計時器被 Chrome 節流到每分鐘一拍，8 秒會把「還開著的隱藏分頁」誤判成離線（掛機中徽章誤亮＋刪角保護空窗）；正常關頁走 pagehide/beforeunload 立即除名，不受 TTL 影響
 const _roleSessionId = 'rs_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2);
+// 舊版本的獨立傭兵帳本不再有任何讀取者，升級載入時直接捨棄（包含舊鎖）。
+try { _lsRemove('fb5_merc_exp_ledger'); _lsRemove('fb5_merc_exp_ledger_lock'); } catch(e) {}
 function _roleEpoch(){ return 're_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2); }
 function _roleFingerprint(p){
     if(!p || !p.cls) return '';
@@ -408,6 +411,7 @@ function _roleSessionHeartbeat(){
     else delete reg[_roleSessionId];
     _roleWriteObject(ROLE_SESSION_REGISTRY_KEY, reg);
     if(active && typeof syncMercenaryEmploymentRegistry === 'function') syncMercenaryEmploymentRegistry();
+    if(active && _roleForceLeaveIfBorrowed()) return;
     if(active && typeof enforceMercenarySafeArea === 'function') enforceMercenarySafeArea();
 }
 function _roleOtherActiveSessions(){
@@ -439,6 +443,166 @@ function _roleSaveAllowed(){
     }
     return !stored || storedFp === fp;
 }
+// 同一角色的短期互斥鎖：只包住「重新檢查＋宣告／登入登記」的臨界區，
+// 不延長成遊戲期間的長鎖；真正的遊戲互斥仍由 session heartbeat 維持。
+//
+// 招募與登入都必須使用同一把 slot lock，流程不能只在畫面更新時檢查一次：
+// - 招募：鎖內重新確認「沒有其他分頁遊玩、沒有其他僱主」，再寫入僱主的 allies。
+// - 登入：鎖內重新確認「沒有僱傭關係、沒有相同角色 session」，再登記本分頁。
+// 這樣可以縮小「剛檢查完、另一個分頁剛好宣告」的競態窗口；鎖只維持數秒，
+// 避免分頁當機後永久卡住。遊戲期間的長時間狀態則交給 2 秒 heartbeat 與 TTL 判定。
+const ROLE_ACTIVITY_LOCK_KEY_BASE = 'fb5_role_activity_lock_v1_';
+const ROLE_ACTIVITY_LOCK_TTL_MS = 5000;
+function _roleActivityLockKey(slotN){ return ROLE_ACTIVITY_LOCK_KEY_BASE + String(slotN); }
+function _withRoleActivityLock(slotN, fn){
+    let key = _roleActivityLockKey(slotN), token = 'ra_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2), now = Date.now();
+    try {
+        let old = _lsGet(key), row = old ? JSON.parse(old) : null;
+        if (row && row.token && now - (Number(row.ts) || 0) < ROLE_ACTIVITY_LOCK_TTL_MS) return false;
+        if (!_lsSet(key, JSON.stringify({ token:token, ts:now }))) return false;
+        let check = _lsGet(key), verified = false;
+        try { let c = check ? JSON.parse(check) : null; verified = !!(c && c.token === token); } catch (e) {}
+        if (!verified) return false;
+        try { fn(); } finally {
+            try { let c2 = _lsGet(key), row2 = c2 ? JSON.parse(c2) : null; if (row2 && row2.token === token) _lsRemove(key); } catch (e) {}
+        }
+        return true;
+    } catch (e) { return false; }
+}
+function _roleSummaryIdentity(summary){
+    if (!summary) return '';
+    return (typeof _mercRoleIdentity === 'function') ? _mercRoleIdentity({ cls:summary.rawCls || summary.cls, name:summary.name, enSeed:summary.enSeed }) : '';
+}
+function _roleLoanAllyMatchesSummary(ally, summary){
+    if (!ally || !summary) return false;
+    let rawCls = summary.rawCls || summary.cls;
+    if (summary.enSeed && ally.enSeed) {
+        if (String(ally.enSeed) !== String(summary.enSeed)) return false;
+        // 新快照帶有 roleEpoch 時必須再比世代；舊快照沒有世代則以 enSeed 保守相容。
+        if (ally._roleEpoch != null && String(ally._roleEpoch) !== String(summary.roleEpoch || 'legacy')) return false;
+        return true;
+    }
+    // 極舊存檔沒有 enSeed，只能退回職業＋角色名守衛。
+    return !summary.enSeed && ally.cls === rawCls && (ally.name || '') === (summary.name || '');
+}
+function _roleFindLoanEmployer(slotN, summary){
+    if (!_roleSummaryIdentity(summary)) return null;
+    for(let n = 1; n <= 8; n++){
+        if(String(n) === String(slotN)) continue;
+        let employer = _roleReadSavePlayer(n);
+        if(!employer || !!employer.classicMode !== !!(summary.classicMode != null ? summary.classicMode : summary.classic)) continue;
+        let employerId = typeof _mercRoleIdentity === 'function' ? _mercRoleIdentity(employer) : '';
+        let hit = (employer.allies || []).find(a => {
+            if(!a || String(a._slot) !== String(slotN)) return false;
+            if(typeof _mercRoleIdentity !== 'function') return false;
+            return _roleLoanAllyMatchesSummary(a, summary);
+        });
+        if(hit) return { employerSlot:String(n), employerId:employerId, employerName:employer.name || '未命名', hiredAt:Number(hit._hiredAt) || 0 };
+    }
+    return null;
+}
+function _roleActiveSessionFor(slotN, roleFp){
+    let reg = _rolePruneSessions(_roleReadObject(ROLE_SESSION_REGISTRY_KEY));
+    _roleWriteObject(ROLE_SESSION_REGISTRY_KEY, reg);
+    return Object.keys(reg).map(id => ({ id:id, row:reg[id] })).find(x => x.id !== _roleSessionId && x.row && String(x.row.slot) === String(slotN) && (!roleFp || String(x.row.fp || '') === String(roleFp))) || null;
+}
+function roleCanOpenForPlay(slotN, summary){
+    // 登入優先擋「目前已被出借」，再擋同一角色的其他活動分頁。
+    // roleFp 包含 enSeed + roleEpoch；同一存檔欄位換成新角色後，不會被舊分頁誤擋。
+    let employer = _roleFindLoanEmployer(slotN, summary);
+    if(employer) return { ok:false, reason:'borrowed', employer:employer };
+    let active = _roleActiveSessionFor(slotN, summary && summary.roleFp);
+    if(active) return { ok:false, reason:'active', session:active };
+    return { ok:true, reason:'' };
+}
+function roleCanBeLoaned(slotN, summary){
+    // 招募檢查與登入檢查相反的順序不影響結果，但兩者都必須在同一短鎖內再次呼叫，
+    // 不能只相信 NPC 清單上的舊快取或舊 employment bucket。
+    let active = _roleActiveSessionFor(slotN, summary && summary.roleFp);
+    if(active) return { ok:false, reason:'active', session:active };
+    let employer = _roleFindLoanEmployer(slotN, summary);
+    if(employer) return { ok:false, reason:'borrowed', employer:employer };
+    return { ok:true, reason:'' };
+}
+function _roleLoanAtomic(slotN, summary, commit){
+    let out = { ok:false, reason:'busy' };
+    let locked = _withRoleActivityLock(slotN, () => {
+        let gate = roleCanBeLoaned(slotN, summary);
+        if(!gate.ok){ out = gate; return; }
+        out = commit(gate) || { ok:true };
+    });
+    return locked ? out : { ok:false, reason:'busy' };
+}
+function _roleOpenClaim(slotN, summary){
+    let out = { ok:false, reason:'busy' };
+    let locked = _withRoleActivityLock(slotN, () => {
+        let gate = roleCanOpenForPlay(slotN, summary);
+        if(!gate.ok){ out = gate; return; }
+        let reg = _rolePruneSessions(_roleReadObject(ROLE_SESSION_REGISTRY_KEY));
+        // 先寫入 opening session，再進入 loadGame；若載入中途失敗，呼叫端會移除此登記。
+        // 若載入後才發現僱傭競態，heartbeat 會將舊分頁送回角色選擇畫面。
+        reg[_roleSessionId] = { ts:Date.now(), slot:String(slotN), fp:summary.roleFp, name:summary.name || '未命名', state:'opening' };
+        if(!_roleWriteObject(ROLE_SESSION_REGISTRY_KEY, reg)) return;
+        out = { ok:true, reason:'' };
+    });
+    return locked ? out : { ok:false, reason:'busy' };
+}
+function _roleForceLeaveIfBorrowed(){
+    if(typeof state === 'undefined' || !state.running || !player || !player.cls) return false;
+    let employer = typeof currentRoleMercenaryEmployer === 'function' ? currentRoleMercenaryEmployer() : null;
+    if(!employer) employer = _roleFindLoanEmployer(currentSlot, { rawCls:player.cls, name:player.name, enSeed:player.enSeed, roleEpoch:String(player._roleEpoch || 'legacy'), classic:!!player.classicMode });
+    if(!employer) return false;
+    if(typeof alert === 'function') alert(`此角色已被 ${employer.employerName || '其他角色'} 出借為傭兵，遊戲將返回角色選擇畫面。請先由僱主解散傭兵。`);
+    try { if(typeof returnToCharacterSelect === 'function') returnToCharacterSelect(); else { state.running = false; if(typeof stopGameTimers === 'function') stopGameTimers(); _roleSessionForget(); } } catch(e) {}
+    return true;
+}
+function _mercSourceStoredIdentity(p){
+    return {
+        enSeed: (typeof _mercSourceSeed === 'function') ? _mercSourceSeed(p) : (_roleFingerprint(p).split('|')[0] || ''),
+        roleEpoch: String((p && p._roleEpoch) || 'legacy')
+    };
+}
+// 將戰鬥期間累積的來源快取批次寫回。
+//
+// 【重要存檔原則】
+// - 本函式不建立新的計時器，也不在普通擊殺流程呼叫；只掛在原本已存在的 saveGame／回村／解散流程。
+// - 一次呼叫會掃過所有 dirty 來源，7 名傭兵最多就是 7 個來源存檔各寫一次，不是每隻怪寫 7 次。
+// - 寫入前先重新讀取儲存空間，比對 enSeed + roleEpoch；來源已刪除或換世代時，禁止舊快取覆蓋新角色。
+// - 每個來源獨立記錄失敗。成功者清除 dirty，失敗者保留 dirty，讓下一個既有存檔時機重試。
+// - _lzSet() 仍沿用既有 SIG 包裝、LZString／明文 fallback 與 pagehide 最終存檔機制；
+//   這裡沒有新增加密，也沒有改成每次擊殺同步壓縮。
+function flushMercSourceSaves(reason, onlySlot){
+    let attempted = [], failed = [];
+    let cache = (typeof _mercSourceCache !== 'undefined' && _mercSourceCache) ? _mercSourceCache : {};
+    Object.keys(cache).forEach(slotN => {
+        if(onlySlot != null && String(slotN) !== String(onlySlot)) return;
+        let entry = cache[slotN];
+        if(!entry || !entry.dirty) return;
+        attempted.push(String(slotN));
+        try {
+            // 來源角色可能在快取建立後被刪除、匯入或重建；只要身分有一項不同就放棄這筆舊資料。
+            let stored = _saveUnwrap(_lzGet('lineage_idle_save_' + slotN));
+            if(!stored || (stored.signed && !stored.ok)) { failed.push(String(slotN)); return; }
+            let savedDoc = stored && stored.payload ? JSON.parse(stored.payload) : null;
+            let savedP = savedDoc && savedDoc.p;
+            let savedId = _mercSourceStoredIdentity(savedP);
+            if(!savedP || !savedP.cls || savedId.enSeed !== entry.enSeed || savedId.roleEpoch !== entry.roleEpoch) { failed.push(String(slotN)); return; }
+            // 先包裝完整來源文件再寫入，故來源的 lv／exp／bonus／alignmentValue 與其他原有欄位
+            // 會一起保持一致；entry.dirty 要等寫後驗證成功才清除。
+            let encoded = _saveWrap(JSON.stringify(entry.doc));
+            if(!_lzSet('lineage_idle_save_' + slotN, encoded)) { failed.push(String(slotN)); return; }
+            let verify = _saveUnwrap(_lzGet('lineage_idle_save_' + slotN));
+            if(!verify || (verify.signed && !verify.ok)) { failed.push(String(slotN)); return; }
+            let verifyDoc = verify && verify.payload ? JSON.parse(verify.payload) : null;
+            let verifyId = _mercSourceStoredIdentity(verifyDoc && verifyDoc.p);
+            if(!verifyDoc || !verifyDoc.p || verifyId.enSeed !== entry.enSeed || verifyId.roleEpoch !== entry.roleEpoch) { failed.push(String(slotN)); return; }
+            // 寫入與回讀驗證都成功，才表示這一筆已落地；任何例外都會走 catch，保留 dirty。
+            entry.dirty = false;
+            entry.lastSavedAt = Date.now();
+        } catch(e) { failed.push(String(slotN)); }
+    });
+    return { ok: failed.length === 0, attempted:attempted, failed:failed };
+}
 setInterval(_roleSessionHeartbeat, 2000);
 // 🔄 登入畫面徽章活刷：只重算徽章、原地增刪 span——不整頁重繪（不打斷選取與立繪動畫），存檔面資料用 _loadSlotMeta 快取。
 //    🗑️ v3.7.94 移除離線掛機後這裡只剩「擔任傭兵」：僱主在別的分頁解散傭兵→這裡 2 秒內消失。
@@ -456,6 +620,7 @@ setInterval(function(){
             else btn.insertAdjacentHTML('beforeend', html);
         } else if(old) old.remove();
     });
+    updateLoadInfo();   // 同角色在另一分頁剛登入／被出借時，立即同步停用進入按鈕
 }, 2000);
 // 💾 v3.7.94 關頁／切背景的最終存檔。
 //    ⚠️ **這段不是可有可無的**：離線掛機（js/27）被移除前，唯一的 visibilitychange／pagehide／beforeunload
@@ -683,7 +848,7 @@ function _allProgressReadMode(mode){
     };
 }
 function _allProgressReadMerc(){
-    let out = { ledger: _allProgressJsonRead(MERC_LEDGER_KEY, []), employment:{ normal:[], classic:[] }, leaders:{ normal:{}, classic:{} } };
+    let out = { employment:{ normal:[], classic:[] }, leaders:{ normal:{}, classic:{} } };
     ALL_PROGRESS_MODES.forEach(mode => {
         out.employment[mode.name] = _allProgressJsonRead(_mercEmploymentKey(mode.classic), []);
         for(let slot = 1; slot <= 8; slot++)
@@ -771,7 +936,7 @@ function _allProgressValidate(snapshot){
     _allProgressValidateMode(shared.modes.classic, '經典模式');
     if(!shared.pandora || typeof shared.pandora !== 'object' || Array.isArray(shared.pandora) || !Array.isArray(shared.pandora.wanderers) || !Array.isArray(shared.pandora.boards) || !Array.isArray(shared.pandora.nameHistory) || !Number.isFinite(Number(shared.pandora.diamonds)) || Number(shared.pandora.diamonds) < 0) throw new Error('潘朵拉資料格式不正確');
     if(!shared.clan || typeof shared.clan !== 'object' || Array.isArray(shared.clan) || !shared.clan.modes || typeof shared.clan.modes !== 'object' || Array.isArray(shared.clan.modes) || !Object.prototype.hasOwnProperty.call(shared.clan.modes, 'normal') || !Object.prototype.hasOwnProperty.call(shared.clan.modes, 'classic') || !shared.clan.members || typeof shared.clan.members !== 'object' || Array.isArray(shared.clan.members) || !shared.clan.npcWorlds || typeof shared.clan.npcWorlds !== 'object' || Array.isArray(shared.clan.npcWorlds) || !Object.prototype.hasOwnProperty.call(shared.clan.npcWorlds, 'normal') || !Object.prototype.hasOwnProperty.call(shared.clan.npcWorlds, 'classic')) throw new Error('血盟資料格式不正確');
-    if(!shared.merc || typeof shared.merc !== 'object' || !Array.isArray(shared.merc.ledger)) throw new Error('傭兵帳本資料格式不正確');
+    if(!shared.merc || typeof shared.merc !== 'object' || Array.isArray(shared.merc)) throw new Error('傭兵資料格式不正確');
     ['normal','classic'].forEach(mode => {
         if(!Array.isArray(shared.merc.employment && shared.merc.employment[mode])) throw new Error('傭兵僱傭索引格式不正確');
         if(!shared.merc.leaders || typeof shared.merc.leaders[mode] !== 'object' || Array.isArray(shared.merc.leaders[mode])) throw new Error('傭兵僱主索引格式不正確');
@@ -794,7 +959,7 @@ function _allProgressAntharasKeys(slots, keys){
     }
 }
 function _allProgressTargetKeys(snapshot){
-    let keys = new Set(['lineage_idle_save', 'fb5_pandora_relic_market_v1', CLAN_STATE_KEY, AUTOSELL_GLOBAL_KEY, MERC_LEDGER_KEY]);
+    let keys = new Set(['lineage_idle_save', 'fb5_pandora_relic_market_v1', CLAN_STATE_KEY, AUTOSELL_GLOBAL_KEY]);
     for(let slot = 1; slot <= 8; slot++){
         keys.add('lineage_idle_save_' + slot);
         keys.add('lineage_idle_save_' + slot + '_bak');
@@ -842,7 +1007,6 @@ function _allProgressWritePlan(snapshot){
         add(_mercEmploymentKey(mode.classic), snapshot.shared.merc.employment[mode.name], false, false);
         for(let slot = 1; slot <= 8; slot++) add(_mercEmployerBucketKey(mode.classic, slot), snapshot.shared.merc.leaders[mode.name][String(slot)], false, false);
     });
-    add(MERC_LEDGER_KEY, snapshot.shared.merc.ledger, false, false);
     add(AUTOSELL_GLOBAL_KEY, snapshot.shared.autoSell, false, false);
     Object.keys(snapshot.shared.antharas.clears).forEach(key => add(key, snapshot.shared.antharas.clears[key], false, true));
     return plan;
@@ -1320,9 +1484,11 @@ function updateLoadInfo(){
     const enter = document.getElementById('load-btn-enter');
     const exportBtn = document.getElementById('load-btn-export');
     const del = document.getElementById('load-btn-delete');
+    const openGate = empty ? { ok:false, reason:'empty' } : roleCanOpenForPlay(_loadSelectedSlot, sum);
     if(create) create.classList.toggle('hidden', !empty);
     if(importBtn) importBtn.classList.toggle('hidden', !empty);
     if(enter) enter.classList.toggle('hidden', empty);
+    if(enter){ enter.disabled = !empty && !openGate.ok; enter.title = openGate.reason === 'borrowed' ? '此角色已出借，請先由僱主解散。' : (openGate.reason === 'active' ? '此角色正在其他分頁遊玩。' : ''); }
     if(exportBtn) exportBtn.classList.toggle('hidden', empty);
     if(del) del.classList.toggle('hidden', empty);
 }
@@ -1349,28 +1515,40 @@ function loadCreateSelected(){
     showCreation();
 }
 function loadEnterSelected(){
-    const sum = slotSummary(_loadSelectedSlot);
+    const slot = String(_loadSelectedSlot), sum = slotSummary(slot);
     if(!sum) return;
     _loadLastClickSlot = 0; _loadLastClickAt = 0;
-    currentSlot = _loadSelectedSlot;
-    loadGame();
+    let claim = _roleOpenClaim(slot, sum);
+    if(!claim.ok){
+        if(claim.reason === 'borrowed') alert(`此角色目前擔任 ${claim.employer && claim.employer.employerName || '其他角色'} 的傭兵，無法登入；請先由僱主解散。`);
+        else if(claim.reason === 'active') alert('此角色正在其他遊戲分頁遊玩，無法重複登入。');
+        else alert('角色目前正被其他分頁操作，請稍後再試。');
+        updateLoadInfo();
+        return;
+    }
+    currentSlot = slot;
+    if(loadGame() === false) _roleSessionForget();
 }
 function loadImportSelected(){ importSave(_loadSelectedSlot); }
 function loadExportSelected(){ exportSave(_loadSelectedSlot); }
 function loadDeleteSelected(){
     const slot = _loadSelectedSlot, sum = slotSummary(slot);
     if(!sum){ renderLoadSelect(); return; }
-    const active = _roleOtherActiveSessions();
-    if(active.length){
-        const names = Array.from(new Set(active.map(s => s.name || ('存檔 ' + s.slot)))).join('、');
-        alert(`偵測到其他角色仍在遊戲中${names ? `（${names}）` : ''}。\n\n為避免角色、寵物與傭兵資料錯亂，請先關閉其他遊戲分頁，等待約 8 秒後再刪除。`);
+    const gate = roleCanOpenForPlay(slot, sum);
+    if(gate.reason === 'borrowed'){
+        alert(`此角色目前擔任 ${gate.employer && gate.employer.employerName || '其他角色'} 的傭兵，禁止刪除；請先由僱主解散。`);
+        return;
+    }
+    if(gate.reason === 'active'){
+        alert('此角色正在其他遊戲分頁遊玩，請先關閉該分頁後再刪除。');
         return;
     }
     const expected = sum.name || '未命名';
     const typed = prompt(`即將刪除存檔 ${slot}：${sum.cls} Lv.${sum.lv} ${expected}\n\n刪除後才能在此欄位創建新角色或匯入進度。\n請輸入角色名稱「${expected}」確認刪除：`, '');
     if(typed === null) return;
     if(typed.trim() !== expected){ alert('角色名稱不正確，已取消刪除。'); return; }
-    if(_roleOtherActiveSessions().length){ alert('刪除期間偵測到其他遊戲分頁，已取消刪除。請先關閉其他角色後再試。'); return; }
+    let gate2 = roleCanOpenForPlay(slot, sum);
+    if(!gate2.ok){ alert(gate2.reason === 'borrowed' ? '此角色已被出借，已取消刪除。' : '刪除期間偵測到此角色正在其他分頁遊玩，已取消刪除。'); return; }
     const oldPlayer = _roleReadSavePlayer(slot), fp = _roleFingerprint(oldPlayer);
     // 👑 v3.6.01 血盟盟主刪角警告（用戶拍板）：盟主刪除＝clanOnRoleDeleted 會解散該模式血盟並清空同模式所有角色的貢獻，刪前必須講明
     let _clanWarn = '';
@@ -1382,7 +1560,6 @@ function loadDeleteSelected(){
     if(fp && !_roleMarkDeleted(fp)){ alert('無法建立刪除保護，為避免舊分頁寫回角色，本次刪除已取消。'); return; }
     try { if(typeof mercPetReleaseForEmployer === 'function') mercPetReleaseForEmployer(oldPlayer); } catch(e){ console.warn('merc pet employer cleanup', e); }
     try { if(typeof petReleaseSlotAssignments === 'function') petReleaseSlotAssignments(slot); } catch(e){ console.warn('pet delete cleanup', e); }
-    try { if(typeof mercLedgerPurgeSlot === 'function') mercLedgerPurgeSlot(slot); } catch(e){ console.warn('merc delete cleanup', e); }
     try { if(typeof antharasForgetRoleClear === 'function') antharasForgetRoleClear(oldPlayer, slot); } catch(e){ console.warn('antharas clear cleanup', e); }
     _lsRemove('lineage_idle_save_' + slot);
     _lsRemove('lineage_idle_save_' + slot + '_bak');
@@ -1661,7 +1838,7 @@ function startGame() {
     document.getElementById('creation-screen').classList.add('hidden');
     document.getElementById('game-screen').classList.remove('hidden');
     document.body.classList.add('game-bg-dim');   // 正式遊戲後：背景淡化
-    if (typeof mercLedgerPurgeSlot === 'function') { try { mercLedgerPurgeSlot(currentSlot); } catch (e) {} }   // 🩹 v3.0.108 新角色覆蓋此存檔位→清除前一個角色的待領傭兵經驗（新角色不繼承）
+    if (typeof mercSourceClearCache === 'function') mercSourceClearCache();   // 新角色不繼承上一角色的傭兵來源快取
     if (typeof petReleaseSlotAssignments === 'function') { try { petReleaseSlotAssignments(currentSlot); } catch (e) { console.warn('pet slot ownership cleanup', e); } }   // 🐾 覆蓋角色時，舊角色出戰寵物回保管，避免卡在不存在的角色名下
     
     const avatarMap = {
@@ -1856,6 +2033,7 @@ function normalizeFacingRefsForSave() {
 }
 function saveStateJson() {
     normalizeFacingRefsForSave();
+    (player.allies || []).forEach(a => { if (a) { delete a._expGained; delete a._alignmentDelta; } });
     // Facing references are normalized above. Avoid a replacer callback for every field in
     // the save, which becomes noticeably expensive for large inventories and companion data.
     // 🧙 v3.2.40 稽核修：v2 召喚實體＝戰鬥暫存不入檔（設計即「讀檔後自動重施」）——暫時摘下再復原，
@@ -1867,33 +2045,14 @@ function saveStateJson() {
     try { return JSON.stringify({ v: SAVE_VERSION, p: player, ms: mapState, ticks: state.ticks }); }
     finally { if (_sv2 && _sv2.length) player.summonsV2 = _sv2; if (_gv2 && _gv2.length) player.guardsV2 = _gv2; }
 }
-// 🤝 v3.8.2 受僱中角色「經驗只增不減」防護（用戶指定）：擔任傭兵的角色被鎖在安全區、無法自行掛機打怪，
-//    其存檔經驗的唯一來源＝待領帳本領取（additive）。若另一情境（別分頁／先前一次領取）已把「磁碟上的」
-//    經驗墊高，本情境用較舊的記憶體快照存回會覆蓋掉墊高的經驗＝待領經驗遺失。對策：存檔序列化前，
-//    若「目前正擔任傭兵（mercRoleSafeAreaOnly·2 秒快取）」且磁碟等級/經驗高於記憶體 → 吸收磁碟較高值，
-//    保證存回只增不減（不以舊經驗覆蓋主玩家攜帶存回的經驗）。非受僱角色不受影響（閘門快取 false 直接早退）。
-function _mercMonotonicExpGuard() {
-    try {
-        if (typeof mercRoleSafeAreaOnly !== 'function' || !mercRoleSafeAreaOnly()) return;   // 只在「受僱中·被鎖安全區·無法外掛」時啟用
-        if (!player || !player.cls || typeof currentSlot === 'undefined' || currentSlot == null) return;
-        let stored = _saveUnwrap(_lzGet('lineage_idle_save_' + currentSlot));
-        if (stored.signed && !stored.ok) return;                                  // 磁碟簽章壞 → 不冒險比對
-        let raw = stored.payload; if (!raw) return;
-        let dp = JSON.parse(raw).p; if (!dp || dp.cls !== player.cls) return;      // 不同職業＝別的角色（同位重創）→ 不吸收
-        if (player.enSeed && dp.enSeed && player.enSeed !== dp.enSeed) return;     // enSeed 不符＝別的角色 → 不吸收
-        let dLv = Math.floor(dp.lv || 1), dExp = Math.floor(dp.exp || 0);
-        let mLv = Math.floor(player.lv || 1), mExp = Math.floor(player.exp || 0);
-        if (!((dLv > mLv) || (dLv === mLv && dExp > mExp))) return;                // 磁碟不比記憶體高 → 照常存回（含記憶體剛領取到的較高值）
-        player.lv = dLv; player.exp = dExp;
-        if (typeof dp.bonus === 'number') player.bonus = Math.max(Math.floor(player.bonus || 0), Math.floor(dp.bonus));   // 配點點數不倒退
-        if (dLv !== mLv && typeof calcStats === 'function') { try { calcStats(); } catch (e) {} }   // 升級 → 重算 HP/MP 上限
-        try { logSys(`<span class="text-emerald-300">受僱中偵測到存檔經驗較新（Lv.${dLv}），已保留較高進度、不以舊經驗覆蓋。</span>`); } catch (e) {}
-    } catch (e) {}
-}
 function saveGame() {
     // 死亡狀態不寫檔：避免把 player.dead=true 存進去，導致下次讀檔卡在死亡狀態而不出怪。
     // 死亡期間沒有可保存的進度，保留上一份「存活」存檔即可。
-    if (player && player.dead) return false;
+    if (player && player.dead) {
+        // 目前角色仍不寫檔，但傭兵來源快取是獨立存檔，不能因隊長死亡而丟掉已取得的來源經驗。
+        try { if (typeof flushMercSourceSaves === 'function') flushMercSourceSaves('saveGame-dead'); } catch (e) {}
+        return false;
+    }
     // 🛡️ v3.3.14 防「空殼玩家覆蓋既有存檔」資料遺失：標題／載入畫面的 player 是 cls:null 的空殼（尚未載入/創建角色）。
     //    5 分鐘自動存檔計時器（startGameTimers）在「返回主選單」後不會被清除、beforeunload／寵物名冊 dirty 也可能觸發 saveGame，
     //    這些背景觸發會把空殼 player 寫進 currentSlot（預設 1）→ 毀掉該格真正的角色（顯示為 null／Lv.1／預設王族／資料不完整）。
@@ -1946,9 +2105,16 @@ function saveGame() {
     });
     }   // ← _uiConfigReady 閘（審計#1）
 
-    _mercMonotonicExpGuard();   // 🤝 v3.8.2 受僱中經驗只增不減：序列化前吸收磁碟較高的等級/經驗，防舊快照覆蓋待領帳本領取的經驗
+    // 保留原本 saveGame 的所有呼叫點：5 分鐘、回村、Boss、手動存檔、切頁／關頁等。
+    // 這裡只是把本次已在記憶體累積的來源角色變更一起批次寫回，不在普通擊殺新增 saveGame。
+    let _mercSourceFlush = (typeof flushMercSourceSaves === 'function') ? flushMercSourceSaves('saveGame') : { ok:true, attempted:[], failed:[] };
     if(!_lzSet('lineage_idle_save_' + currentSlot, _saveWrap(saveStateJson()))) throw new Error('persistent storage write failed');   // 🔧 寫入成功才回報；並由 saveStateJson 排除戰鬥面向暫存參照
     if(typeof petRosterSave === 'function' && !petRosterSave()) throw new Error('pet roster write failed');
+    if(!_mercSourceFlush.ok){
+        // 來源個別失敗時，flushMercSourceSaves() 已保留對應 entry.dirty；下次同一既有存檔點會重試。
+        logSys(`<span class="text-red-400 font-bold">部分傭兵來源存檔保存失敗（${_mercSourceFlush.failed.join('、')}），已保留記憶體進度並會在下次既有存檔時重試。</span>`);
+        return false;
+    }
     logSys(`遊戲進度已儲存。`);
     _saveFailureNotified = false;
     return true;
@@ -2026,6 +2192,11 @@ function purgeOrphanItems(warehouse) {
 }
 
 function loadGame() {
+    if (typeof flushMercSourceSaves === 'function') {
+        let _sourceFlush = flushMercSourceSaves('role-switch');
+        if (!_sourceFlush.ok) { alert(`傭兵來源存檔保存失敗（${_sourceFlush.failed.join('、')}），無法切換角色；請稍後再試。`); return false; }
+    }
+    if (typeof mercSourceClearCache === 'function') mercSourceClearCache();
     _uiConfigReady = false;   // 🛡️ 審計#1：載入期間 DOM 仍是上一個畫面/預設值，禁止 saveGame 以它重建 config
     let _masteryRepair = null;
     // 🐾 v3.3.16 換角色前：先把上一角色未存的寵物進度 flush 進共用桶，再失效記憶體快取→新角色 petRoster() 從桶重載（防跨角色髒鏡像互洗裝備/出戰）。
@@ -2037,15 +2208,17 @@ function loadGame() {
     //    照樣解得出角色摘要 → updateLoadInfo 的 empty=false → 「匯入進度」帶 hidden、只有「刪除角色」看得見。
     //    舊文案叫玩家直接去點「匯入進度」，那顆按鈕在此情境根本不渲染（且 importSave 的「已有角色請先刪除」閘門也會擋），
     //    故改成先刪後匯的正確順序（刪除流程走既有的輸入角色名確認，不繞過保護）。
-    if (_u.signed && !_u.ok) { alert('此存檔的完整性校驗未通過，可能已被外部修改，無法載入。\n可改用其他存檔位。\n若要還原先前匯出的 .json 備份檔：請先在載入畫面按「刪除角色」清空本欄位，清空後「匯入進度」按鈕才會出現，再用它還原。'); return; }
+    if (_u.signed && !_u.ok) { alert('此存檔的完整性校驗未通過，可能已被外部修改，無法載入。\n可改用其他存檔位。\n若要還原先前匯出的 .json 備份檔：請先在載入畫面按「刪除角色」清空本欄位，清空後「匯入進度」按鈕才會出現，再用它還原。'); return false; }
     let s = _u.payload;
     if (s) {
         // 🛡️ 與其他讀檔點一致：毀損時乾淨報錯而非拋例外卡死
         //    ⚠️ v3.5.94 這條與上面簽章失敗那條方向相反：payload 連 JSON.parse 都失敗時 _summaryFromRaw 也回 null
         //    → 該欄位在載入畫面顯示為空、empty=true → 「匯入進度」可見而「刪除角色」被 hidden。
         //    舊文案多寫的「仍可用『刪除角色』清空」正好點名此情境唯一看不見的那顆按鈕，故移除。
-        let d; try { d = JSON.parse(s); } catch(e){ alert('此存檔位的資料已毀損，無法載入。\n此欄位在載入畫面會顯示為空，請直接按「匯入進度」還原先前匯出的 .json 備份檔。'); return; }
+        let d; try { d = JSON.parse(s); } catch(e){ alert('此存檔位的資料已毀損，無法載入。\n此欄位在載入畫面會顯示為空，請直接按「匯入進度」還原先前匯出的 .json 備份檔。'); return false; }
         player = d.p; mapState = d.ms;
+        delete player.mercLedgerOutbox;   // 舊版待領帳本鏡像直接捨棄，不再遷移或領取
+        (player.allies || []).forEach(a => { if (a) { delete a._expGained; delete a._alignmentDelta; } });   // 舊版傭兵快照收益不轉入來源角色
         delete player.offlineHunt;   // 🗑️ v3.7.94 離線掛機已移除：舊存檔的逐地圖速率快照沒有讀取者，載入即丟掉（否則每次存檔都白帶一份）
         normalizeFacingRefsForSave();   // 舊存檔若含 v3.2.12 面向物件副本，載入時立即轉為 UID／隊員鍵並移除物件參照
         if (typeof applyGlobalAutoSellSettings === 'function') applyGlobalAutoSellSettings();   // 🔧 v2.6.91 功能5：載入角色時套用全域自動販賣設定（8 角色共用時覆蓋本檔規則）
@@ -2248,13 +2421,6 @@ function loadGame() {
         if (player.ismaelAccUsed && !(player.siege.accCdUntil > 0)) player.siege.accCdUntil = Date.now() + 24 * 3600 * 1000;
         delete player.ismaelAccUsed;   // 舊版「攻城獲勝重置額度」遷移為購買後 24 小時冷卻。
         if (typeof clanSyncCurrentPlayer === 'function') clanSyncCurrentPlayer();   // 共用血盟為權威，同步成員與清除舊 24h 城堡欄位。
-        // 🛡️ v2.6.69 審計#8：上次分頁關閉前未寫進帳本的傭兵經驗待寫紀錄（隨存檔攜帶）→ 重載後補 flush（uid 冪等·帳本已有同 uid 自動跳過）
-        if (typeof _mercLedgerOutbox !== 'undefined' && Array.isArray(player.mercLedgerOutbox) && player.mercLedgerOutbox.length) {
-            let _mNow = Date.now();
-            player.mercLedgerOutbox.forEach(r => { if (r && r.uid && (_mNow - (r.ts || 0)) < MERC_LEDGER_KEEP_CLAIMED) _mercLedgerOutbox.push(r); });   // 超過已領保留期(7天)的陳舊鏡像不再補寫（防已領又被清的紀錄復活＝重複領取）
-            player.mercLedgerOutbox = [];
-            try { _mercLedgerFlush(); } catch (e) {}
-        }
         if (typeof loadSharedCollections === 'function') loadSharedCollections();   // 🎴🗡️ 讀檔：載入同模式共用收集圖鑑（卡片/裝備·併入該角色既有資料）
         if (typeof ensureCardBook === 'function') ensureCardBook();   // 🎴 舊存檔遷移：移除道具欄的卡片收集冊本體（改由「收藏」面板開啟）
         if (typeof ensureEquipBook === 'function') ensureEquipBook(_loadWarehouseReady ? _loadWarehouse : undefined);   // 🗡️ 舊存檔遷移：移除裝備收集冊本體＋登錄現有(背包/已裝備)裝備
@@ -2362,7 +2528,9 @@ function loadGame() {
         }
         if ((_masteryRepair && _masteryRepair.changed) || _levelPointRepair > 0) saveGame();   // 修復後立即固化，避免重載時再次遇到同一壞狀態
         try { if (typeof purgeReplacedAllies === 'function') purgeReplacedAllies(); } catch (e) {}   // 🤝 v3.4.23 載入後掃描：出戰傭兵的來源存檔位若已換成新角色（enSeed 不同）→ 自動解散
+        return true;
     }
+    return false;
 }
 
 // 🆕 升級能力點補發：新制 Lv2 起每升一級 1 點；舊角色曾只在 Lv50 後取得，依已分配＋未分配點數補回缺額。

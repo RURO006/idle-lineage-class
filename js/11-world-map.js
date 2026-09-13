@@ -1213,8 +1213,7 @@ function changeMap(force) {
         player.mp = player.mmp;
         try { if (typeof reviveDownedMercsAtTown === 'function') reviveDownedMercsAtTown(); } catch (e) {}   // 🤝 Phase 3：回村/回城免費復活全體倒地傭兵
         try { if (typeof petsReviveAtTown === 'function') petsReviveAtTown(); } catch (e) {}   // 🐾 v3.6.29 回村：出戰寵物倒地復活＋補滿 HP/MP＋清異常（比照傭兵·js/22）
-        try { if (typeof refreshAllAllies === 'function') refreshAllAllies(); } catch (e) {}   // 🔄 v3.7.87 隊長進安全區＝自動刷新一次隊員資料（結算待領經驗＋依來源存檔重建戰力快照·取代 v2.6.68 只結算的 mercBankAlliesAtTown、與舊「重新招募」按鈕同動作）。⚠️ loadGame 也走 getHomeTown()+changeMap(true) 進到這裡→「隊長登入自動刷新」共用此掛點，勿再另外掛一次
-        try { if (typeof mercExpClaimPending === 'function') mercExpClaimPending(); } catch (e) {}     // 🤝 v2.6.68 本角色回村/載入（loadGame 一律回家鄉村莊）：自動領取自己的待領經驗
+        try { if (typeof refreshAllAllies === 'function') refreshAllAllies(); } catch (e) {}   // 🔄 進安全區時刷新戰鬥快照；來源角色經驗已在戰鬥中直接更新，這裡只批次保存並重建
         // 🏰 城堡護衛 v2：回城/回村補滿全部護衛 HP、清死亡倒數（castleGuardSync 依名冊重建·此處只補血）
         if (typeof player.guardsV2 !== 'undefined' && player.guardsV2) player.guardsV2.forEach(g => { if (g) { g.hp = g.mhp; g._downed = false; g._reviveAt = 0; g._diedAt = 0; } });
         // 協力角色：進村莊一併回滿 MP（與玩家一致）

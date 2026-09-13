@@ -385,12 +385,8 @@ function killMob(idx) {
             if (!a || a._downed) return;
             let _gain = Math.floor(_expEach * getExpGainMult(a.lv || 1));
             if (_gain <= 0) return;
-            a.exp = (a.exp || 0) + _gain;
-            a._expGained = (a._expGained || 0) + _gain;
-            let _up = 0;
-            while ((a.lv || 1) < 100 && a.exp >= getExpReq(a.lv)) { a.exp -= getExpReq(a.lv); a.lv++; a.bonus = (a.bonus || 0) + 1; _up++; }   // 比照 checkLvUp：每升一級取得 1 點能力點
-            if ((a.lv || 1) >= 100) a.exp = 0;
-            if (_up > 0) { try { if (typeof _allyLevelRecompute === 'function') _allyLevelRecompute(a); } catch (e) {} logCombat(`<span class="text-yellow-300 font-bold">協力傭兵 ${a._allyName} 升級了！目前 Lv.${a.lv}</span>`, 'mercenary'); try { renderSquadPanel(); } catch (e) {} }
+            let _up = (typeof mercSourceGainExp === 'function') ? mercSourceGainExp(a, _gain) : 0;
+            if (_up > 0) { logCombat(`<span class="text-yellow-300 font-bold">協力傭兵 ${a._allyName} 升級了！目前 Lv.${a.lv}</span>`, 'mercenary'); try { renderSquadPanel(); } catch (e) {} }
         });
     }
     let _goldDropRate = mob.boss ? 1 : 0.7;   // 💰 一般怪 70%；頭目 100%
