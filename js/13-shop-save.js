@@ -1861,7 +1861,7 @@ function adjStat(s, v) {
     let b = createBase[curCreate.cls];
     let spent = curCreate.str + curCreate.dex + curCreate.con + curCreate.int + curCreate.wis + curCreate.cha;
     let left = b.pts - spent;
-    let capN = 20;   // 創角階段各屬性最高點到 20（含魅力，與其他屬性一致；之後靠升級點數突破至上限 60）
+    let capN = 20;   // 創角階段各屬性最高點到 20（含魅力，與其他屬性一致；之後靠升級點數突破至上限 100）
     if (v > 0 && left > 0 && (b[s] + curCreate[s]) < capN) curCreate[s]++;
     else if (v < 0 && curCreate[s] > 0) curCreate[s]--;
     updateCreateUI();
@@ -2656,7 +2656,7 @@ function repairLevelUpPoints(owner) {
 // 配點/萬能藥的「自然屬性值」：基礎+配點+萬能藥（不含裝備與 buff）；屬性上限只套用在此值上，裝備/buff 可再往上疊加
 function naturalStat(s) { return (player.base[s] || 0) + (player.alloc[s] || 0) + ((player.panacea && player.panacea[s]) || 0); }
 function adjBonusStat(s) {
-    let capN = 60;   // 屬性配點上限：一律 60，不分等級；上限只看 naturalStat(base+配點+萬能藥)，裝備/buff 一律不計入、可再往上疊加
+    let capN = 100;   // 屬性配點上限：一律 100，不分等級；上限只看 naturalStat(base+配點+萬能藥)，裝備/buff 一律不計入、可再往上疊加
     if (player.bonus > 0 && naturalStat(s) < capN) {
         player.alloc[s]++; player.bonus--;
         calcStats();
@@ -2679,7 +2679,7 @@ function startRespec() {
 }
 // 六大屬性的 +/- 路由：重置中＝改草稿；否則＝花用升級點數（僅 +、不可退）
 function adjAlloc(s, dir) {
-    let capN = 60;
+    let capN = 100;   // 重配草稿與一般升級配點共用 100 上限，避免兩條操作路徑規則不一致
     if (_respec) {
         let b = createBase[player.cls];
         if (dir > 0) { if (respecPtsLeft() > 0 && (b[s] + _respec.draft[s]) < capN) _respec.draft[s]++; }

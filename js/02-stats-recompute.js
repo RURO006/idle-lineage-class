@@ -56,7 +56,7 @@ function recomputeStats() {
     // ===== Phase 0：基礎屬性 + 衍生欄位歸零（依基本設定，起始值0；AC起始10）=====
     let pn = player.panacea || {};
     d.str = b.str + a.str + (pn.str||0); d.dex = b.dex + a.dex + (pn.dex||0); d.con = b.con + a.con + (pn.con||0); d.int = b.int + a.int + (pn.int||0); d.wis = b.wis + a.wis + (pn.wis||0);
-    d.cha = (b.cha || 0) + (a.cha || 0) + (pn.cha||0);   // 魅力：第六屬性（配點＋萬能藥本就≤60；裝備／buff 可突破 60）
+    d.cha = (b.cha || 0) + (a.cha || 0) + (pn.cha||0);   // 魅力：第六屬性（配點＋萬能藥的自然屬性上限為 100；裝備／buff 可額外提供加成）
 
     d.ac = 10; d.er = 0; d.dr = 0;
     d.meleeDmg = 0; d.meleeHit = 0; d.meleeCrit = 0;
@@ -100,7 +100,7 @@ function recomputeStats() {
         if (ed.int) d.int += ed.int;
         if (ed.con) d.con += ed.con;
         if (ed.wis) d.wis += ed.wis;
-        if (ed.cha) d.cha += ed.cha;   // 🔧 裝備魅力(cha)：可突破 60 上限
+        if (ed.cha) d.cha += ed.cha;   // 🔧 裝備魅力(cha)：額外計入六維屬性，與自然配點分開計算
         if (ed.swordStr && p.eq.wpn) { let _st = getWeaponTags(p.eq.wpn.id); if (_st.includes('單手劍') || _st.includes('雙手劍')) d.str += ed.swordStr; }   // 🏺 將軍愛用的握劍護腕：持單手劍／雙手劍時力量 +N（提前計入衍生能力）
     }
     // 👑 同名 buff 去重（頭盔版「力盔/敏盔」優先，蓋掉法師魔法版／王族魔法精通版，避免同效果疊加）：頭盔版生效時把對應法師版 buff 歸零
@@ -507,7 +507,7 @@ d.mr += (baseMr + bonusMr);
     if (_shN('紅獅') >= 3) { d.dr += 10; }
     p._setRedLion5 = _shN('紅獅') >= 5;          // 最終傷害 +10%（普攻於 getPhysicalDmg、技能於 castSkill、各 proc 套用）
     if (_shN('白鳥') >= 2) { d.extraHit += 5; }
-    if (_shN('白鳥') >= 3) { d.cha += 10; }   // 白鳥3件：魅力+10（可突破 60 上限）
+    if (_shN('白鳥') >= 3) { d.cha += 10; }   // 白鳥3件：魅力+10（套裝加成可額外突破自然配點上限）
     p._setWhiteBird5 = _shN('白鳥') >= 5;        // 一般攻擊命中附加「脆弱」3 秒
     if (_shN('鐵衛') >= 2) { d.ac -= 3; d.dr += 5; }
     p._setIron3 = _shN('鐵衛') >= 3;             // 受到傷害 −20%（受擊時·乘算）
