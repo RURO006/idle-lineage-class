@@ -1075,9 +1075,32 @@
 /* 🔤 v3.4.22 標題字級改用 cqw（跟隨標題框寬度）而非 vw：修正「寬而矮視窗下框縮小但字仍撐到 vw 上限→標題超框」；並整體略縮 */
 #login-title-layer h1 { margin:0 0 2.5%; font-size:clamp(13px,8cqw,30px); line-height:1.15; color:#f5d46c; }
 #login-title-layer p { margin:0; font-size:clamp(9px,1.05vw,16px); color:#e7d7b5; }
-#main-menu { position:absolute; z-index:4; left:50.4%; top:48.5%; width:25%; margin:0 !important; display:flex; flex-direction:column; align-items:stretch; gap:clamp(10px,1.45vw,22px) !important; }
+#main-menu {
+    position:absolute;
+    z-index:4;
+    left:50.4%;
+    top:50%;
+    width:25%;
+    max-height:calc(100% - 20px);
+    margin:0 !important;
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:clamp(6px,.95vw,14px) !important;
+    box-sizing:border-box;
+    overflow-y:auto;
+    scrollbar-width:thin;
+    transform:translateY(-50%);
+}
 #main-menu.hidden { display:none !important; }
-#main-menu > button {
+#global-progress-actions {
+    width:100%;
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:clamp(5px,.7vw,10px);
+}
+#main-menu > button,
+#global-progress-actions > button {
     width:100% !important;
     padding:clamp(8px,1.08vw,17px) 4px !important;
     border:1px solid rgba(198,156,74,.82) !important;
@@ -1091,13 +1114,19 @@
     text-shadow:0 1px 2px #000, 0 0 7px rgba(231,194,91,.45);
     box-shadow:inset 0 1px 0 rgba(255,232,167,.13), inset 0 -14px 18px rgba(0,0,0,.34), 0 0 12px rgba(0,0,0,.75);
 }
-#main-menu > button:hover {
+#global-progress-actions > button {
+    min-height:0;
+    padding:clamp(5px,.62vw,10px) 3px !important;
+    font-size:clamp(9px,.86vw,14px) !important;
+}
+#main-menu > button:hover,
+#global-progress-actions > button:hover {
     color:#fff1ba !important;
     border-color:rgba(241,199,92,.95) !important;
     background:linear-gradient(180deg, rgba(42,32,16,.98), rgba(12,8,4,.98)) !important;
     box-shadow:inset 0 1px 0 rgba(255,232,167,.22), inset 0 -14px 18px rgba(0,0,0,.28), 0 0 16px rgba(216,179,80,.36);
 }
-#main-menu > p { width:150% !important; margin:1% 0 0 -25% !important; font-size:clamp(9px,.78vw,14px) !important; line-height:1.42; color:#eee2c7; text-shadow:0 1px 3px #000,0 0 3px #000; }
+#main-menu > p { width:100% !important; margin:1% 0 0 !important; font-size:clamp(8px,.65vw,12px) !important; line-height:1.42; color:#eee2c7; text-shadow:0 1px 3px #000,0 0 3px #000; }
 #cloud-drive-panel {
     width:100%;
     box-sizing:border-box;
@@ -1949,13 +1978,15 @@ button.classic-skill-cell { cursor:pointer; }
     height:clamp(18px,2.55vw,32px);
     font-size:clamp(8px,.9vw,12px);
 }
-#main-menu > button.load-global-action {
+#main-menu > button.load-global-action,
+#global-progress-actions > button.load-global-action {
     border-color:rgba(109,128,164,.82) !important;
     color:#cbd5e1 !important;
     background:linear-gradient(180deg, rgba(22,31,47,.94), rgba(7,11,18,.97)) !important;
     text-shadow:0 1px 2px #000, 0 0 8px rgba(148,163,184,.34);
 }
-#main-menu > button.load-global-action:hover {
+#main-menu > button.load-global-action:hover,
+#global-progress-actions > button.load-global-action:hover {
     color:#f1f5f9 !important;
     border-color:rgba(165,180,202,.95) !important;
     background:linear-gradient(180deg, rgba(30,41,59,.98), rgba(7,11,18,.97)) !important;
@@ -2010,6 +2041,8 @@ button.classic-skill-cell { cursor:pointer; }
 #cloud-sync-header button:hover { color:#fff; border-color:#cbd5e1; }
 #cloud-sync-summary { min-height:0; overflow:auto; padding:14px 18px 8px; }
 .cloud-sync-file-meta,.cloud-sync-overview { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px 18px; color:#cbd5e1; font-size:13px; line-height:1.35; }
+.cloud-sync-notice { margin-top:8px; padding:8px 10px; border:1px solid #7c5a18; border-radius:4px; background:rgba(120,83,10,.18); color:#fde68a; line-height:1.45; }
+.cloud-sync-notice.is-safe { border-color:#166534; background:rgba(22,101,52,.18); color:#bbf7d0; }
 .cloud-sync-overview { align-items:center; margin-top:8px; padding:8px 10px; border:1px solid #334155; border-radius:4px; background:rgba(15,23,42,.78); }
 .cloud-sync-overview strong.is-changed { color:#fbbf24; }
 .cloud-sync-overview strong.is-same { color:#86efac; }
@@ -2173,6 +2206,7 @@ button.classic-skill-cell { cursor:pointer; }
         box-shadow: none;
     }
     #main-menu > button,
+    #global-progress-actions > button,
     #load-action-panel button,
     #creation-back-button,
     #btn-start.creation-start-button,
@@ -2199,14 +2233,24 @@ button.classic-skill-cell { cursor:pointer; }
     #login-title-layer p { font-size: 14px; }
     #main-menu {
         left: 8%;
-        top: 31%;
+        top: 50%;
         width: 84%;
-        gap: 12px !important;
+        max-height: calc(100% - 24px);
+        gap: 10px !important;
+        transform: translateY(-50%);
+    }
+    #global-progress-actions {
+        gap: 8px;
     }
     #main-menu > button {
         min-height: 48px;
         padding: 10px 8px !important;
         font-size: 16px !important;
+    }
+    #global-progress-actions > button {
+        min-height: 42px;
+        padding: 8px 4px !important;
+        font-size: 13px !important;
     }
     #main-menu > p {
         width: 100% !important;

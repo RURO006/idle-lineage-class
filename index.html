@@ -14,7 +14,7 @@
     <title>放置天堂 - 日出之國</title>
     <link rel="icon" type="image/png" href="assets/favicon.png">   <!-- 🖼️ 瀏覽器分頁圖示(favicon)：把你的圖放到 assets/favicon.png 即生效；可改 href 路徑或副檔名(.ico/.svg) -->
 
-    <link rel="stylesheet" href="css/style.css?v=v3.8.42-google-drive">
+    <link rel="stylesheet" href="css/style.css?v=v3.8.51-google-drive-sync">
     <link rel="stylesheet" href="css/floating-ui.css?v=v3.5.100-audit-tail">
     <link rel="stylesheet" href="css/tailwind-built.css"><!-- 🔧 預編譯 Tailwind（取代執行期 JIT tailwind.js）：只含實際用到的 class，省 407KB runtime + 移除持續掃描 DOM 的成本。置於 style.css 之後以保留原 cascade（utility 平手時勝過自訂 class，與舊 JIT 注入順序一致） -->
 </head>
@@ -35,14 +35,15 @@
 
         <div id="main-menu" class="flex flex-col gap-5 items-center my-12">
             <button onclick="openLoadSelect()" id="btn-start-menu" class="btn text-xl w-72 py-4 bg-blue-700 hover:bg-blue-600 border-blue-500">開始遊戲</button>
-            <button onclick="exportAllProgress()" id="btn-export-all" type="button" class="btn load-global-action">匯出所有進度</button>
-            <button onclick="importAllProgress()" id="btn-import-all" type="button" class="btn load-global-action">匯入所有進度</button>
+            <div id="global-progress-actions" aria-label="全部進度操作">
+                <button onclick="exportAllProgress()" id="btn-export-all" type="button" class="btn load-global-action">匯出所有進度</button>
+                <button onclick="importAllProgress()" id="btn-import-all" type="button" class="btn load-global-action">匯入所有進度</button>
+            </div>
             <section id="cloud-drive-panel" aria-label="Google 雲端存檔">
                 <div id="cloud-drive-status" class="cloud-drive-status" aria-live="polite">Google 雲端：尚未設定 Client ID</div>
                 <div class="cloud-drive-actions">
                     <button onclick="driveSignIn()" id="btn-google-drive-signin" type="button">使用 Google 登入</button>
-                    <button onclick="driveCloudSave()" id="btn-google-drive-save" type="button" disabled>雲端儲存</button>
-                    <button onclick="driveCloudLoad()" id="btn-google-drive-load" type="button" disabled>雲端讀取</button>
+                    <button onclick="driveCloudSync()" id="btn-google-drive-sync" type="button" disabled>雲端同步</button>
                     <button onclick="driveSignOut()" id="btn-google-drive-signout" type="button" disabled>登出</button>
                 </div>
                 <div id="cloud-drive-last-sync" class="cloud-drive-last-sync" aria-live="polite">尚未同步</div>
@@ -611,7 +612,7 @@
 <script src="js/30-siege-v2.js?v=v3.7.89-castle-ring-layout"></script>
 <script src="js/31-castle-guards.js?v=v3.8.23-sherine-set-rework"></script>
 <script src="js/32-threat.js?v=v3.8.23-sherine-set-rework"></script>
-<script src="js/google-drive-config.js?v=v3.8.42-google-drive"></script>
-<script src="js/33-google-drive-save.js?v=v3.8.42-google-drive"></script>
+<script src="js/google-drive-config.js?v=v3.8.51-google-drive-sync"></script>
+<script src="js/33-google-drive-save.js?v=v3.8.51-google-drive-sync"></script>
 </body>
 </html>

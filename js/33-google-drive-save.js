@@ -76,12 +76,10 @@
         const connected = !!driveState.accessToken && Date.now() < driveState.tokenExpiresAt;
         const configured = !!configClientId();
         const signIn = getEl('btn-google-drive-signin');
-        const save = getEl('btn-google-drive-save');
-        const load = getEl('btn-google-drive-load');
+        const sync = getEl('btn-google-drive-sync');
         const signOut = getEl('btn-google-drive-signout');
         if (signIn) signIn.disabled = !configured || driveState.busy;
-        if (save) save.disabled = !configured || driveState.busy;
-        if (load) load.disabled = !configured || driveState.busy;
+        if (sync) sync.disabled = !configured || driveState.busy;
         if (signOut) signOut.disabled = !connected || driveState.busy;
         const meta = readCloudMeta();
         setText('cloud-drive-last-sync', meta && meta.lastSyncAt ? '最後同步：' + fmtTime(meta.lastSyncAt) : '尚未同步');
@@ -97,7 +95,10 @@
     function writeCloudMeta(file, envelope) {
         const meta = {
             fileId: file && file.id || '',
+            // version 是 Drive 檔案內容的修訂版本；下次同步會用它確認本機的基準是否仍是目前雲端版本。
+            cloudVersion: file && file.version != null ? String(file.version) : '',
             fileModifiedTime: file && file.modifiedTime || '',
+            cloudFingerprint: envelope && envelope.save ? snapshotFingerprint(envelope.save) : '',
             cloudSavedAt: envelope && envelope.cloudSavedAt || '',
             lastSyncAt: new Date().toISOString()
         };
@@ -262,19 +263,71 @@
         };
     }
 
-    function canonicalize(value) {
+    // 比對只看遊戲邏輯資料；_roleEpoch 是防止舊分頁覆寫新角色的執行期世代碼，
+    // 雲端驗證時會重新產生，不能把它算進「進度是否相同」的指紋。
+    function comparisonCopy(snapshot) {
+        if (snapshot == null) return snapshot;
+        let copy;
+        try { copy = JSON.parse(JSON.stringify(snapshot)); }
+        catch (e) { return snapshot; }
+        for (let slot = 1; slot <= 8; slot++) {
+            const doc = copy.slots && copy.slots[String(slot)];
+            const p = doc && doc.p;
+            if (!p) continue;
+            // 舊存檔可能沒有這些欄位；補成驗證器會使用的正規形式，避免舊資料產生假差異。
+            if (typeof _allProgressRoleSeed === 'function') {
+                try { p.enSeed = String(_allProgressRoleSeed(p, slot)); } catch (e) {}
+            } else if (p.enSeed != null) p.enSeed = String(p.enSeed);
+            if (!Array.isArray(p.allies)) p.allies = [];
+        }
+        // 血盟／潘朵拉的 updatedAt 是儲存容器的維護時間，不是遊戲進度。
+        if (copy.shared && copy.shared.clan) delete copy.shared.clan.updatedAt;
+        if (copy.shared && copy.shared.pandora) delete copy.shared.pandora.updatedAt;
+        return copy;
+    }
+
+    function canonicalize(value, key) {
         if (Array.isArray(value)) return value.map(canonicalize);
         if (value && typeof value === 'object') {
             const result = {};
-            Object.keys(value).sort().forEach(function (key) { result[key] = canonicalize(value[key]); });
+            Object.keys(value).sort().forEach(function (childKey) {
+                if (childKey === '_roleEpoch') return;
+                result[childKey] = canonicalize(value[childKey], childKey);
+            });
             return result;
         }
         return value;
     }
 
     function snapshotFingerprint(snapshot) {
-        try { return JSON.stringify(canonicalize(snapshot)); }
+        try { return JSON.stringify(canonicalize(comparisonCopy(snapshot))); }
         catch (e) { return ''; }
+    }
+
+    function isEmptyPandoraState(value) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+        const boards = Array.isArray(value.boards) ? value.boards : [];
+        return Number(value.seq) === 0
+            && Number(value.diamonds) === 0
+            && Number(value.lastCheckBucket) === -1
+            && Array.isArray(value.wanderers) && value.wanderers.length === 0
+            && Array.isArray(value.nameHistory) && value.nameHistory.length === 0
+            && boards.length === 3
+            && boards.every(function (board) {
+                return board && !board.contract && Number(board.cooldownUntil) === 0;
+            });
+    }
+
+    // 潘朵拉尚未建立 localStorage 狀態時，匯出 API 會回傳帶隨機 seed 的預設物件，
+    // 每次讀取都可能不同。若本機與雲端都還是完全空白狀態，沿用雲端 seed，
+    // 讓它不會在每次同步時被誤認為進度變更，也不會無意義地改寫未來隨機序列。
+    function alignEmptyPandoraSeed(local, cloud) {
+        const localState = local && local.shared && local.shared.pandora;
+        const cloudState = cloud && cloud.envelope && cloud.envelope.save
+            && cloud.envelope.save.shared && cloud.envelope.save.shared.pandora;
+        if (isEmptyPandoraState(localState) && isEmptyPandoraState(cloudState) && cloudState.seed) {
+            localState.seed = cloudState.seed;
+        }
     }
 
     function safeArray(value) { return Array.isArray(value) ? value : []; }
@@ -437,8 +490,27 @@
             + '<span>雲端：' + escapeHtml(cloud && cloud.savedAt ? fmtTime(cloud.savedAt) : '沒有雲端存檔') + '</span></div>';
         html += '<div class="cloud-sync-file-meta"><span>版本：' + escapeHtml(local && local.version || gameVersion()) + '</span>'
             + '<span>雲端版本：' + escapeHtml(cloud && cloud.version || '-') + '</span></div>';
+        if (session.reason === 'conflict' || session.reason === 'no-base') {
+            const baseLabel = session.baseMeta && session.baseMeta.cloudVersion
+                ? 'v' + session.baseMeta.cloudVersion
+                : (session.baseMeta && session.baseMeta.fileModifiedTime ? fmtTime(session.baseMeta.fileModifiedTime) : '未記錄');
+            html += '<div class="cloud-sync-notice">'
+                + (session.reason === 'conflict'
+                    ? (session.cloudFile
+                        ? '雲端存檔已被其他裝置更新。本機是從較舊的雲端版本開始遊玩，請選擇要保留哪一邊。'
+                        : '找不到本機上次同步的雲端存檔，可能已被其他裝置刪除，請確認是否要重建雲端檔案。')
+                    : '找不到本機上次同步的雲端版本，無法安全判斷本機是否以目前雲端為基準，請選擇同步方向。')
+                + '<br>上次同步基準：' + escapeHtml(baseLabel)
+                + '　目前雲端：' + escapeHtml(cloudVersionLabel(session.cloudFile)) + '</div>';
+        } else if (session.reason === 'safe-upload' || session.reason === 'create') {
+            html += '<div class="cloud-sync-notice is-safe">目前雲端仍是上次同步版本，本機進度將安全上傳。</div>';
+        }
+        let headline = '兩邊沒有差異';
+        if (session.reason === 'conflict') headline = '發現同步衝突，請選擇';
+        else if (session.reason === 'no-base') headline = '無法確認同步基準，請選擇';
+        else if (diff.changed) headline = '偵測到本機進度變更';
         html += '<div class="cloud-sync-overview"><span>本機角色：' + escapeHtml(local && local.roleCount || 0) + '/8</span><span>雲端角色：' + escapeHtml(cloud && cloud.roleCount || 0) + '/8</span>'
-            + '<strong class="' + (diff.changed ? 'is-changed' : 'is-same') + '">' + (diff.changed ? '偵測到差異' : '兩邊沒有差異') + '</strong></div>';
+            + '<strong class="' + (diff.changed ? 'is-changed' : 'is-same') + '">' + headline + '</strong></div>';
         html += '<div class="cloud-sync-section-title">角色摘要</div><div class="cloud-sync-role-table">'
             + '<div class="cloud-sync-role-head"><span>存檔</span><span>本機</span><span>雲端</span></div>';
         for (let slot = 1; slot <= 8; slot++) {
@@ -459,20 +531,24 @@
             html += '<div class="cloud-sync-shared-row ' + (row[3] ? 'is-changed' : '') + '"><b>' + escapeHtml(row[0]) + '</b><span>' + row[1] + '</span><span>' + row[2] + '</span></div>';
         });
         html += '</div>';
-        setText('cloud-sync-title', session.mode === 'login' ? 'Google 雲端同步' : (session.mode === 'save' ? '雲端儲存比較' : '雲端讀取比較'));
+        setText('cloud-sync-title', 'Google 雲端同步');
         const body = getEl('cloud-sync-summary');
         if (body) body.innerHTML = html;
         const upload = getEl('cloud-sync-upload');
         const download = getEl('cloud-sync-download');
         const cancel = getEl('cloud-sync-cancel');
-        const bothSame = localExists && cloudExists && !diff.changed;
+        const bothSame = localExists && cloudExists && session.contentSame;
         if (upload) {
             upload.disabled = !localExists || bothSame;
-            upload.textContent = cloudExists ? '上傳本機，覆蓋雲端' : '上傳本機，建立雲端存檔';
+            upload.textContent = session.reason === 'conflict' || session.reason === 'no-base'
+                ? '保留本機，覆蓋雲端'
+                : (cloudExists ? '上傳本機，覆蓋雲端' : '上傳本機，建立雲端存檔');
         }
         if (download) {
             download.disabled = !cloudExists || bothSame;
-            download.textContent = localExists ? '下載雲端，覆蓋本機' : '下載雲端到本機';
+            download.textContent = session.reason === 'conflict' || session.reason === 'no-base'
+                ? '使用雲端，覆蓋本機'
+                : (localExists ? '下載雲端，覆蓋本機' : '下載雲端到本機');
         }
         if (cancel) cancel.disabled = false;
         const modal = getEl('cloud-sync-modal');
@@ -489,10 +565,85 @@
     function sameCloudFile(a, b) {
         if (!a && !b) return true;
         if (!a || !b) return false;
-        return a.id === b.id && String(a.modifiedTime || '') === String(b.modifiedTime || '') && String(a.version || '') === String(b.version || '');
+        if (String(a.id || '') !== String(b.id || '')) return false;
+        // version 是主要判斷依據；舊回應若沒有 version，才退回 modifiedTime。
+        if (a.version != null || b.version != null) {
+            return String(a.version || '') !== '' && String(a.version || '') === String(b.version || '');
+        }
+        return String(a.modifiedTime || '') === String(b.modifiedTime || '');
     }
 
-    async function refreshIfStale(session) {
+    function cloudVersionLabel(file) {
+        if (!file) return '沒有雲端檔案';
+        if (file.version != null && String(file.version) !== '') return 'v' + String(file.version);
+        return file.modifiedTime ? fmtTime(file.modifiedTime) : '未知';
+    }
+
+    function cloudMetaMatches(meta, cloud) {
+        if (!meta || !cloud || !cloud.file || !cloud.envelope) return false;
+        if (String(meta.fileId || '') !== String(cloud.file.id || '')) return false;
+        // 有版本資料時只接受完全相同的 Drive revision，避免不同檔案剛好有相同時間。
+        if (meta.cloudVersion) {
+            return cloud.file.version != null && String(meta.cloudVersion) === String(cloud.file.version);
+        }
+        // 舊版只記錄 modifiedTime；僅作相容用，成功同步後會補寫 cloudVersion。
+        if (meta.fileModifiedTime && cloud.file.modifiedTime && String(meta.fileModifiedTime) === String(cloud.file.modifiedTime)) return true;
+        return !!(meta.cloudFingerprint && String(meta.cloudFingerprint) === snapshotFingerprint(cloud.envelope.save));
+    }
+
+    function makeSyncSession(local, cloud, baseMeta) {
+        alignEmptyPandoraSeed(local, cloud);
+        const localEnvelope = makeEnvelope(local);
+        const localFingerprint = snapshotFingerprint(local);
+        const cloudFingerprint = cloud.envelope ? snapshotFingerprint(cloud.envelope.save) : '';
+        const contentSame = !!cloud.envelope && localFingerprint === cloudFingerprint;
+        const localMeaningful = hasMeaningfulSnapshot(local);
+        const cloudExists = !!(cloud.file && cloud.envelope);
+        let reason;
+
+        // 雲端不存在時，只有從未有過同步基準才可直接建立檔案；若已有基準卻找不到
+        // 原檔，代表檔案可能被其他裝置刪除，也必須交由使用者確認是否重建。
+        if (!cloudExists) reason = baseMeta && baseMeta.fileId ? 'conflict' : (localMeaningful ? 'create' : 'empty');
+        else if (contentSame) reason = 'same';
+        // 雲端仍是本機上次成功同步的版本，代表本機只是從該版本繼續遊玩，可安全上傳。
+        else if (cloudMetaMatches(baseMeta, cloud)) reason = 'safe-upload';
+        // 有基準但雲端已換版＝其他裝置更新過；沒有基準則不能猜測本機的來源。
+        else reason = baseMeta && baseMeta.fileId ? 'conflict' : 'no-base';
+
+        return {
+            mode: 'sync',
+            local: local,
+            cloud: cloud.envelope,
+            cloudFile: cloud.file,
+            baseMeta: baseMeta,
+            reason: reason,
+            localFingerprint: localFingerprint,
+            localMeaningful: localMeaningful,
+            cloudMeaningful: cloudExists,
+            contentSame: contentSame,
+            localSummary: progressSummary(local, localEnvelope),
+            cloudSummary: cloud.envelope ? progressSummary(cloud.envelope.save, cloud.envelope) : null
+        };
+    }
+
+    function showSyncReview(local, cloud, baseMeta, reasonOverride) {
+        const session = makeSyncSession(local, cloud, baseMeta);
+        if (reasonOverride) session.reason = reasonOverride;
+        driveState.cloudFile = cloud.file;
+        driveState.lastCloudEnvelope = cloud.envelope;
+        driveState.syncSession = session;
+        driveState.busy = false;
+        updateCloudUi();
+        if (session.reason === 'conflict' || session.reason === 'no-base') {
+            setStatus('Google 雲端：需要選擇同步方向', 'is-error');
+        }
+        renderDiff(session);
+        return session;
+    }
+
+    // 按下覆蓋方向後重新讀取一次，避免使用者開著選擇視窗時另一台電腦又先寫入。
+    // 任一本機／雲端版本改變都不直接覆蓋，而是以最新資料重新顯示衝突選擇。
+    async function refreshForAction(session) {
         let nowLocal;
         try { nowLocal = localSnapshot(); }
         catch (error) { throw error; }
@@ -502,13 +653,13 @@
             return null;
         }
         const nowCloud = await downloadCloudState();
+        alignEmptyPandoraSeed(nowLocal, nowCloud);
         const localChanged = snapshotFingerprint(nowLocal) !== session.localFingerprint;
         const cloudChanged = !sameCloudFile(nowCloud.file, session.cloudFile);
         if (localChanged || cloudChanged) {
-            closeSyncDialog();
+            showSyncReview(nowLocal, nowCloud, session.baseMeta, 'conflict');
             setStatus('Google 雲端：資料已更新，請重新比較', 'is-error');
             alert('本機或雲端資料在比較期間發生變更，為避免覆蓋新進度，已重新讀取最新資料。');
-            await beginSync(session.mode, true);
             return null;
         }
         return { local: nowLocal, cloud: nowCloud };
@@ -562,8 +713,48 @@
         try { if (typeof renderLoadSelect === 'function') renderLoadSelect(); } catch (error) {}
     }
 
-    async function beginSync(mode, silent) {
-        if (driveState.busy && !silent) return;
+    // 將本機進度上傳到目前雲端檔案。force=true 只代表使用者已在衝突畫面
+    // 明確選擇「保留本機」；即使如此，refreshForAction 仍會先確認選擇後雲端沒有再次換版。
+    async function uploadSession(session, force) {
+        if (!session || driveState.busy || !session.localMeaningful) return;
+        driveState.busy = true;
+        updateCloudUi();
+        setStatus('Google 雲端：正在上傳…', 'is-busy');
+        try {
+            const fresh = await refreshForAction(session);
+            if (!fresh) return;
+            // 安全上傳必須同時滿足：目前檔案仍是比較時看到的檔案，且仍等於本機
+            // 上次成功同步的基準。若基準已失效，只能回到衝突選擇，不能默默覆蓋。
+            if (!force && fresh.cloud.file && !cloudMetaMatches(session.baseMeta, fresh.cloud)) {
+                showSyncReview(fresh.local, fresh.cloud, session.baseMeta, 'conflict');
+                setStatus('Google 雲端：需要選擇同步方向', 'is-error');
+                alert('雲端存檔已不是本機上次同步的版本，為避免覆蓋其他裝置的新進度，請重新選擇同步方向。');
+                return;
+            }
+            const envelope = makeEnvelope(fresh.local);
+            const file = await uploadCloudFile(envelope, fresh.cloud.file);
+            if (!file || !file.id) throw new Error('Google Drive 未回傳有效的雲端檔案。');
+            driveState.cloudFile = file;
+            driveState.lastCloudEnvelope = envelope;
+            driveState.busy = false;
+            // 上傳成功才更新基準；衝突未解決或上傳失敗時保留舊基準，避免下次誤判可直接覆蓋。
+            writeCloudMeta(file, envelope);
+            closeSyncDialog();
+            setStatus('Google 雲端：已同步', 'is-ok');
+            alert('全部進度已同步到 Google 雲端。');
+        } catch (error) {
+            driveState.busy = false;
+            updateCloudUi();
+            setStatus('Google 雲端：上傳失敗', 'is-error');
+            alert(error && error.message ? error.message : 'Google 雲端上傳失敗，您的本機資料未被刪除。');
+        }
+    }
+
+    // 單一「雲端同步」入口：先取得本機／雲端快照，再用本機保存的上一個雲端
+    // revision 判斷是否能自動上傳。只有雲端已被別台裝置更新，或沒有可用基準時，
+    // 才開啟方向選擇視窗交給使用者決定。
+    async function beginSync() {
+        if (driveState.busy) return;
         driveState.busy = true;
         updateCloudUi();
         setStatus('Google 雲端：正在讀取…', 'is-busy');
@@ -576,84 +767,91 @@
                 return;
             }
             const cloud = await downloadCloudState();
-            const localEnvelope = makeEnvelope(local);
+            const session = makeSyncSession(local, cloud, readCloudMeta());
             driveState.cloudFile = cloud.file;
             driveState.lastCloudEnvelope = cloud.envelope;
-            driveState.syncSession = {
-                mode: mode,
-                local: local,
-                cloud: cloud.envelope,
-                cloudFile: cloud.file,
-                localFingerprint: snapshotFingerprint(local),
-                localMeaningful: hasMeaningfulSnapshot(local),
-                cloudMeaningful: !!cloud.envelope,
-                localSummary: progressSummary(local, localEnvelope),
-                cloudSummary: cloud.envelope ? progressSummary(cloud.envelope.save, cloud.envelope) : null
-            };
+            driveState.syncSession = session;
             driveState.busy = false;
             updateCloudUi();
-            renderDiff(driveState.syncSession);
+
+            if (session.reason === 'same') {
+                // 即使內容沒變，也把目前 revision 寫成下一次的比較基準；這能補上
+                // 舊版尚未記錄 version 的裝置資料。
+                writeCloudMeta(cloud.file, cloud.envelope);
+                setStatus('Google 雲端：已同步', 'is-ok');
+                return;
+            }
+            if (session.reason === 'safe-upload' || session.reason === 'create') {
+                await uploadSession(session, false);
+                return;
+            }
+            if (session.reason === 'empty') {
+                setStatus('Google 雲端：沒有需要同步的進度', 'is-ok');
+                return;
+            }
+            showSyncReview(local, cloud, session.baseMeta, session.reason);
         } catch (error) {
             driveState.busy = false;
             updateCloudUi();
             setStatus('Google 雲端：操作失敗', 'is-error');
-            if (!silent) alert(error && error.message ? error.message : 'Google 雲端操作失敗。');
+            alert(error && error.message ? error.message : 'Google 雲端同步失敗。');
         }
     }
 
     async function syncUpload() {
         const session = driveState.syncSession;
         if (!session || driveState.busy || !session.localMeaningful) return;
-        if (!confirm('確定要用本機全部進度覆蓋 Google 雲端存檔嗎？')) return;
-        driveState.busy = true;
-        updateCloudUi();
-        try {
-            const fresh = await refreshIfStale(session);
-            if (!fresh) return;
-            const envelope = makeEnvelope(fresh.local);
-            const file = await uploadCloudFile(envelope, fresh.cloud.file);
-            driveState.cloudFile = file;
-            driveState.lastCloudEnvelope = envelope;
-            driveState.busy = false;
-            writeCloudMeta(file, envelope);
-            closeSyncDialog();
-            setStatus('Google 雲端：已儲存', 'is-ok');
-            alert('全部進度已儲存到 Google 雲端。');
-        } catch (error) {
-            driveState.busy = false;
-            updateCloudUi();
-            setStatus('Google 雲端：儲存失敗', 'is-error');
-            alert(error && error.message ? error.message : 'Google 雲端儲存失敗，您的本機資料未被刪除。');
-        }
+        const conflictChoice = session.reason === 'conflict' || session.reason === 'no-base';
+        if (conflictChoice && !confirm('雲端可能有其他裝置的新進度。\n\n確定要保留本機進度並覆蓋 Google 雲端存檔嗎？')) return;
+        await uploadSession(session, conflictChoice);
     }
 
     async function syncDownload() {
         const session = driveState.syncSession;
         if (!session || driveState.busy || !session.cloud) return;
-        if (!confirm('確定要用 Google 雲端存檔覆蓋本機全部進度嗎？')) return;
+        if (!confirm('確定要使用 Google 雲端存檔覆蓋本機全部進度嗎？')) return;
         driveState.busy = true;
         updateCloudUi();
+        setStatus('Google 雲端：正在下載…', 'is-busy');
         try {
-            const fresh = await refreshIfStale(session);
-            if (!fresh || !fresh.cloud.envelope) throw new Error('雲端存檔已不存在，請重新比較。');
+            const fresh = await refreshForAction(session);
+            if (!fresh) return;
+            if (!fresh.cloud.envelope) throw new Error('雲端存檔已不存在，請重新比較。');
             if (typeof _allProgressRestore !== 'function') throw new Error('全部進度還原功能尚未載入。');
             const result = _allProgressRestore(fresh.cloud.envelope.save);
             if (!result || !result.ok) throw new Error(result && result.error || '本機資料還原失敗。');
             resetRuntimeAfterRestore();
             driveState.busy = false;
+            // 下載成功後，這個雲端 revision 就成為本機新的同步基準。
             writeCloudMeta(fresh.cloud.file, fresh.cloud.envelope);
             closeSyncDialog();
-            setStatus('Google 雲端：已下載到本機', 'is-ok');
+            setStatus('Google 雲端：已同步', 'is-ok');
             alert('Google 雲端全部進度已下載並套用到本機。');
         } catch (error) {
             driveState.busy = false;
             updateCloudUi();
-            setStatus('Google 雲端：讀取失敗', 'is-error');
-            alert(error && error.message ? error.message : 'Google 雲端讀取失敗；本機資料已保留。');
+            setStatus('Google 雲端：下載失敗', 'is-error');
+            alert(error && error.message ? error.message : 'Google 雲端下載失敗；本機資料已保留。');
         }
     }
 
-    async function signIn() { await beginSync('login', false); }
+    async function signIn() {
+        if (driveState.busy) return;
+        driveState.busy = true;
+        updateCloudUi();
+        setStatus('Google 雲端：正在登入…', 'is-busy');
+        try {
+            await getAccessToken(true);
+            driveState.busy = false;
+            updateCloudUi();
+            setStatus('Google 雲端：已連線', 'is-ok');
+        } catch (error) {
+            driveState.busy = false;
+            updateCloudUi();
+            setStatus('Google 雲端：登入失敗', 'is-error');
+            alert(error && error.message ? error.message : 'Google 登入未完成。');
+        }
+    }
 
     function signOut() {
         if (driveState.accessToken && global.google && global.google.accounts && global.google.accounts.oauth2) {
@@ -668,8 +866,7 @@
 
     global.driveSignIn = signIn;
     global.driveSignOut = signOut;
-    global.driveCloudSave = function () { beginSync('save', false); };
-    global.driveCloudLoad = function () { beginSync('load', false); };
+    global.driveCloudSync = beginSync;
     global.cloudSyncCancel = closeSyncDialog;
     global.cloudSyncUpload = syncUpload;
     global.cloudSyncDownload = syncDownload;
