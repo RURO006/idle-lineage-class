@@ -859,12 +859,21 @@ function trialQAccept(key, rr) {
     logSys(`<span class="text-amber-300 font-bold">${c.npc}：試煉開始！</span>去收集 ${c.reqs.map(p => DB.items[p[0]].n + '×' + p[1]).join('、')}（擊殺指定怪物必定掉落）。`);
     saveGame(); _trialRerender(rr);
 }
+// 主角色完成自己的試煉前，先同步扣除可能被誤拿來交付的隊員任務進度。
+// 任務物品都由隊長背包保管，若不先處理 mercTrialLoot，隊員會留下「已收滿」的
+// 假進度，之後即使隊員仍在進行任務也不會再觸發掉落。
+function _trialConsumeForLeader(id, cnt) {
+    if (typeof reconcileAllyQuestLootForLeaderConsume === 'function') {
+        reconcileAllyQuestLootForLeaderConsume(id, cnt);
+    }
+    questConsumeId(id, cnt);
+}
 function trialQComplete(key, rr) {   // 🚫 v3.2.16 移除席琳完成：原第 3 參 sherine（耗結晶必附套裝詞綴）廢止
     let c = TRIAL_Q[key];
     if (!c || player.cls !== c.cls || trialQState(key) !== 1) return;
     if (typeof currentRoleIsMercenary === 'function' && currentRoleIsMercenary()) { logSys('<span class="text-amber-300">此角色正在擔任傭兵，請由隊長在傭兵公會交付試煉道具並領取獎勵。</span>'); return; }
     if (!c.reqs.every(p => questCountId(p[0]) >= p[1])) { logSys('試煉道具尚未備齊。' + (typeof lockHintHtml === 'function' ? lockHintHtml(c.reqs.map(p => p[0])) : '')); return; }   // 🔒 v3.5.87 差額若在鎖定件·明講
-    c.reqs.forEach(p => questConsumeId(p[0], p[1]));
+    c.reqs.forEach(p => _trialConsumeForLeader(p[0], p[1]));
     let _sv = _tradLootCtx; _tradLootCtx = true;   // 🏛️ 傳統模式：試煉獎勵裝備隨機自帶強化值
     try {
         c.rewards.forEach(id => { gainItem(id, 1, false, false); });
@@ -1114,7 +1123,7 @@ function trial50TurnIn() {
     if (st < 1 || st > nStages) return;
     let stage = cfg.stages[st-1];
     if (questCountId(stage.id) < stage.cnt) { logSys('數量不足，無法交付。' + (typeof lockHintHtml === 'function' ? lockHintHtml(stage.id) : '')); return; }   // 🔒 v3.5.87
-    questConsumeId(stage.id, stage.cnt);
+    _trialConsumeForLeader(stage.id, stage.cnt);
     if (st < nStages) { player.trialStage = st + 1; logSys(`<span class="text-emerald-300 font-bold">${cfg.npc}：很好。接著去取得 ${cfg.stages[st].nm}。</span>`); }
     else { player.trialStage = nStages + 1; player.demonTempleOpen = true; logSys(`<span class="c-legend font-bold">${cfg.npc}：你通過了試煉！魔族神殿的大門已對你開啟。</span>`); }
     purgeCompletedElfWhisper();   // 🔥 交付精靈的私語階段完成 → 自動清除剩餘的精靈的私語
@@ -1128,7 +1137,7 @@ function trial50Complete() {   // 🔥 v3.0.78 最終兌換一次性·全拿；�
     if (st !== nStages + 1) return;   // 只有「魔族神殿已開·尚未完成最終兌換」可完成
     let need = cfg.exMatCnt || 1;
     if (questCountId(cfg.exMat) < need) { logSys(`${cfg.exMatNm} 不足 ${need}。` + (typeof lockHintHtml === 'function' ? lockHintHtml(cfg.exMat) : '')); return; }   // 🔒 v3.5.87
-    questConsumeId(cfg.exMat, need);
+    _trialConsumeForLeader(cfg.exMat, need);
     let _sv = _tradLootCtx; _tradLootCtx = true;   // 🏛️ 傳統模式：獎勵裝備隨機自帶強化值
     try {
         cfg.rewards.forEach(r => { gainItem(r.id, 1, false, false); });

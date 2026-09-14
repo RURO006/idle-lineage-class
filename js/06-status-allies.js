@@ -1091,6 +1091,83 @@ function _allyQuestLootCount(ally, itemId) {
     let bucket = _allyQuestLootBucket(ally);
     return Math.max(0, Math.floor(Number(bucket[itemId]) || 0));
 }
+// 主角色交付試煉道具時，修正「隊長背包實體物品」與「隊員進度帳」的所有權同步。
+//
+// 任務掉落會先進入隊長背包，再以 player.mercTrialLoot 分配給隊員。若隊長當時尚未
+// 接任務，背包中的物品其實可能全數屬於隊員；之後隊長接取同一任務時，舊版
+// questConsumeId() 只看背包數量，會把隊員的物品拿去完成隊長任務，卻留下隊員的
+// mercTrialLoot 數量。下次掉落判定只看這個進度帳，便會誤以為隊員已收滿而永久停掉。
+//
+// 物品本身沒有逐件記錄歸屬，因此採用可重建的保守口徑：
+// ① 同一物品的未鎖定背包總量扣除所有隊員分配量，視為隊長自己的可用量；
+// ② 隊長本次消耗超過這個可用量的部分，依穩定的 bucket 順序扣回隊員進度；
+// ③ 只處理本次實際交付會消耗的數量，不會平白清除隊員仍保有的進度。
+// 任務道具禁止存入倉庫，故所有權同步以隊長背包為主要依據；倉庫中的舊資料不會
+// 被當成隊長擁有量，避免再次掩蓋隊員已分配的物品。
+function reconcileAllyQuestLootForLeaderConsume(itemId, cnt) {
+    let need = Math.max(0, Math.floor(Number(cnt) || 0));
+    if (!need || !player || !player.mercTrialLoot || typeof player.mercTrialLoot !== 'object') return 0;
+
+    let rows = [], assignedTotal = 0;
+    Object.keys(player.mercTrialLoot).forEach(key => {
+        let bucket = player.mercTrialLoot[key];
+        if (!bucket || typeof bucket !== 'object') return;
+        let amount = Math.max(0, Math.floor(Number(bucket[itemId]) || 0));
+        if (amount > 0) { rows.push({ bucket:bucket, amount:amount }); assignedTotal += amount; }
+    });
+    if (!assignedTotal) return 0;
+
+    let invHeld = (Array.isArray(player.inv) ? player.inv : [])
+        .filter(it => it && it.id === itemId && !it.lock)
+        .reduce((sum, it) => sum + Math.max(0, Math.floor(Number(it.cnt) || 0)), 0);
+    let leaderOwned = Math.max(0, invHeld - assignedTotal);
+    let assignedConsume = Math.min(assignedTotal, need, Math.max(0, need - leaderOwned));
+    if (!assignedConsume) return 0;
+
+    let remaining = assignedConsume;
+    rows.forEach(row => {
+        if (remaining <= 0) return;
+        let take = Math.min(row.amount, remaining);
+        let left = row.amount - take;
+        if (left > 0) row.bucket[itemId] = left;
+        else delete row.bucket[itemId];
+        remaining -= take;
+    });
+    return assignedConsume - remaining;
+}
+// 修復更新前已經形成的孤兒進度：隊長完成任務後，實體物品可能已被消耗，但舊
+// mercTrialLoot 仍保留原數量。任務道具禁止存倉庫，因此當分配總量大於隊長背包
+// 的未鎖定實體數量時，超出的部分不可能再交付，必須清掉才能重新觸發掉落。
+// 只清除「沒有實體物品支撐」的超額，不會碰到仍有實體物品的正常隊員進度。
+function repairAllyQuestLootInventoryMismatch(itemId) {
+    if (!player || !player.mercTrialLoot || typeof player.mercTrialLoot !== 'object') return 0;
+
+    let rows = [], assignedTotal = 0;
+    Object.keys(player.mercTrialLoot).forEach(key => {
+        let bucket = player.mercTrialLoot[key];
+        if (!bucket || typeof bucket !== 'object') return;
+        let amount = Math.max(0, Math.floor(Number(bucket[itemId]) || 0));
+        if (amount > 0) { rows.push({ bucket:bucket, amount:amount }); assignedTotal += amount; }
+    });
+    if (!assignedTotal) return 0;
+
+    let invHeld = (Array.isArray(player.inv) ? player.inv : [])
+        .filter(it => it && it.id === itemId && !it.lock)
+        .reduce((sum, it) => sum + Math.max(0, Math.floor(Number(it.cnt) || 0)), 0);
+    let orphaned = Math.max(0, assignedTotal - invHeld);
+    if (!orphaned) return 0;
+
+    let remaining = orphaned;
+    rows.forEach(row => {
+        if (remaining <= 0) return;
+        let remove = Math.min(row.amount, remaining);
+        let left = row.amount - remove;
+        if (left > 0) row.bucket[itemId] = left;
+        else delete row.bucket[itemId];
+        remaining -= remove;
+    });
+    return orphaned - remaining;
+}
 function _queueAllyQuestItem(itemId, cnt, predicate) {
     cnt = Math.max(1, Math.floor(Number(cnt) || 1));
     let eligible = [];
@@ -1117,6 +1194,7 @@ function _queueAllyQuestItem(itemId, cnt, predicate) {
 }
 function allyTrialItemActive(itemId) {
     if (typeof trialItemActiveFor !== 'function') return false;
+    repairAllyQuestLootInventoryMismatch(itemId);   // 🩹 舊版已消耗實體物品但殘留進度時，先清除孤兒帳本
     return (player.allies || []).some(ally => ally && !ally._downed && trialItemActiveFor(ally, itemId, _allyQuestLootCount(ally, itemId), true));
 }
 function allyQueueTrialQuestItem(itemId, cnt) {
@@ -1125,6 +1203,7 @@ function allyQueueTrialQuestItem(itemId, cnt) {
 }
 function allyStageQuestItemActive(itemId) {
     if (typeof trialStageItemHeldActiveFor !== 'function') return false;
+    repairAllyQuestLootInventoryMismatch(itemId);   // 🩹 舊版已消耗實體物品但殘留進度時，先清除孤兒帳本
     return (player.allies || []).some(ally => ally && !ally._downed && trialStageItemHeldActiveFor(ally, itemId, _allyQuestLootCount(ally, itemId), true));
 }
 function allyQueueStageQuestItem(itemId, cnt) {
