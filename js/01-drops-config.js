@@ -74,7 +74,7 @@
         '巨大墳墓守護者': [['scroll_acc',0.001],['new_item_151',5],['new_item_160',5],['new_item_154',5],['new_item_152',5],['new_item_161',1],['new_item_155',3],['new_item_153',0.5],['new_item_162',1],['new_item_156',1],['mat_demon_anklet_black',0.05]],
         // ===== 🔥 50級試煉擴充：魔族神殿 =====
         '炎魔的分身': [['new_item_157',10],['new_item_160',10],['new_item_154',10],['new_item_158',2],['new_item_161',2],['new_item_155',1],['new_item_159',5],['new_item_162',1],['new_item_156',1],['mat_black_mithril',0.5]],
-        '黑暗棲林者': [['amr_darkdweller',0.8],['bot_darkdweller',0.8],['scroll_armor',0.5],['scroll_weapon',0.3],['quest_ring_darkdweller',0.05]],
+        '黑暗棲林者': [['amr_darkdweller',0.8],['bot_darkdweller',0.8],['scroll_armor',0.5],['scroll_weapon',0.3],['quest_ring_darkdweller',0.2]],
         '炎魔的思克巴': [['mat_black_mithril',0.5], ['new_item_150',5]],
         '炎魔的思克巴女皇': [['acc_117',0.001],['acc_116',0.001],['mat_black_mithril',0.5], ['mat_black_blood', 1], ['new_item_150',5]],
         '炎魔的小惡魔': [['mat_black_mithril',0.5], ['mat_black_blood', 1]],
@@ -100,12 +100,12 @@
         '狂暴的歐姆': [['scroll_revive', 1]],
         '歐姆裝甲兵': [['scroll_acc',0.0001],['wpn_xbow_rasta', 0.2]],
         '狂暴的歐姆裝甲兵': [['wpn_xbow_rasta', 0.2], ['scroll_weapon', 0.5], ['scroll_armor', 1]],
-        '黑暗妖精殘兵(弓)': [['wpn_small_katana', 0.1], ['wpn_bow_rasta', 0.5], ['arm_rasta_leather', 2], ['bot_rasta', 1], ['quest_ring_darkdweller', 0.1]],
+        '黑暗妖精殘兵(弓)': [['wpn_small_katana', 0.1], ['wpn_bow_rasta', 0.5], ['arm_rasta_leather', 2], ['bot_rasta', 1], ['quest_ring_darkdweller', 0.2]],
         '黑暗妖精殘兵(劍)': [['wpn_sword_rasta', 0.5], ['clk_dark', 0.1], ['arm_rasta_leather', 3], ['bot_rasta', 2], ['scroll_weapon', 0.5], ['scroll_armor', 1], ['bk_berserk', 0.1], ['bk_dark_str', 1], ['bk_dark_burn', 0.5], ['bk_dark_erup', 0.1]],
-        '黑暗妖精殘兵(十字弓)': [['wpn_dagger_rasta', 0.5], ['wpn_xbow_rasta', 1], ['scroll_weapon', 0.5], ['scroll_armor', 1], ['bk_holy_dash', 0.1], ['bk_dark_stealth', 1], ['bk_dark_poison', 1], ['bk_dark_str', 1], ['bk_dark_crit', 0.1], ['bk_dark_erup', 0.1], ['quest_ring_darkdweller', 0.1]],
+        '黑暗妖精殘兵(十字弓)': [['wpn_dagger_rasta', 0.5], ['wpn_xbow_rasta', 1], ['scroll_weapon', 0.5], ['scroll_armor', 1], ['bk_holy_dash', 0.1], ['bk_dark_stealth', 1], ['bk_dark_poison', 1], ['bk_dark_str', 1], ['bk_dark_crit', 0.1], ['bk_dark_erup', 0.1], ['quest_ring_darkdweller', 0.2]],
         '黑暗妖精殘兵(法師)': [['wpn_wand_rasta', 0.5], ['amr_rasta_robe', 0.1], ['bk_dark_dex', 1]],
         '黑暗妖精殘兵(雙手劍)': [['wpn_dual_rasta', 0.5]],
-        '黑暗精靈使': [['scroll_acc',0.001],['scroll_weapon', 0.5], ['scroll_armor', 1], ['bk_holy_barrier', 0.005], ['bk_dark_stealth', 1], ['bk_dark_poison', 1], ['bk_dark_mrup', 1], ['bk_dark_burn', 1], ['bk_dark_poisonres', 0.5], ['bk_dark_double', 0.05], ['bk_dark_fang', 0.1], ['bk_dark_crit', 0.5], ['quest_ring_elfcaller', 0.001], ['bk_abs_barrier', 0.01]],
+        '黑暗精靈使': [['scroll_acc',0.001],['scroll_weapon', 0.5], ['scroll_armor', 1], ['bk_holy_barrier', 0.005], ['bk_dark_stealth', 1], ['bk_dark_poison', 1], ['bk_dark_mrup', 1], ['bk_dark_burn', 1], ['bk_dark_poisonres', 0.5], ['bk_dark_double', 0.05], ['bk_dark_fang', 0.1], ['bk_dark_crit', 0.5], ['quest_ring_elfcaller', 0.2], ['bk_abs_barrier', 0.01]],
         // ===== 拉斯塔巴德正門：黑暗妖精守軍 =====
         '黑暗妖精警衛(十字弓)': [['wpn_xbow_heavy_rasta', 0.5], ['scroll_armor', 0.5], ['scroll_weapon', 0.5], ['bk_holy_dash', 0.05], ['bk_dark_poison', 1], ['bk_dark_burn', 1], ['bk_dark_poisonres', 1]],
         '黑暗妖精魔法學徒': [['wpn_wand_rasta', 1], ['amr_rasta_robe', 0.1], ['bk_dark_dex', 1], ['mat_black_blood', 1]],
@@ -115,11 +115,11 @@
         '黑暗妖精將軍': [['scroll_acc',0.001],['scroll_armor', 0.5], ['scroll_weapon', 0.5], ['bk_reduction_armor', 0.05], ['bk_meteor', 0.001], ['bk_dark_poison', 1], ['bk_dark_burn', 1], ['bk_dark_poisonres', 1], ['bk_dark_dex', 0.6], ['bk_dark_double', 0.1], ['bk_dark_fang', 0.5], ['mat_black_blood', 1], ['mat_steel_chunk',10], ['relic_general_swordguard',0.0001]],
         // ===== 魔獸訓練場 =====
         '拉斯塔巴德守門人': [['item_king_key', 1]],
-        '黑虎': [['quest_ring_beasttamer', 0.05], ['mat_legion_beast', 0.05], ['clk_blacktiger', 0.5]],
-        '拉斯塔巴德馴獸師': [['item_tiger_feed',10], ['wpn_official_2h', 0.01], ['glv_official', 0.05], ['bot_official', 0.05], ['quest_ring_beasttamer', 0.05], ['mat_legion_beast', 0.05]],
-        '受詛咒的馴獸師': [['wpn_official_2h', 0.01], ['glv_official', 0.05], ['bot_official', 0.05], ['quest_ring_beasttamer', 0.05], ['mat_legion_beast', 0.05]],
-        '地獄束縛犬': [['quest_ring_beasttamer', 0.05], ['mat_legion_beast', 0.05]],
-        '魂騎士': [['scroll_acc',0.001],['wpn_official_2h', 0.01], ['glv_official', 0.05], ['bot_official', 0.05], ['blt_dark', 0.05], ['quest_ring_beasttamer', 0.05], ['mat_legion_beast', 0.05]],
+        '黑虎': [['quest_ring_beasttamer', 0.2], ['mat_legion_beast', 0.05], ['clk_blacktiger', 0.5]],
+        '拉斯塔巴德馴獸師': [['item_tiger_feed',10], ['wpn_official_2h', 0.01], ['glv_official', 0.05], ['bot_official', 0.05], ['quest_ring_beasttamer', 0.2], ['mat_legion_beast', 0.05]],
+        '受詛咒的馴獸師': [['wpn_official_2h', 0.01], ['glv_official', 0.05], ['bot_official', 0.05], ['quest_ring_beasttamer', 0.2], ['mat_legion_beast', 0.05]],
+        '地獄束縛犬': [['quest_ring_beasttamer', 0.2], ['mat_legion_beast', 0.05]],
+        '魂騎士': [['scroll_acc',0.001],['wpn_official_2h', 0.01], ['glv_official', 0.05], ['bot_official', 0.05], ['blt_dark', 0.05], ['quest_ring_beasttamer', 0.2], ['mat_legion_beast', 0.05]],
         '地獄奴隸': [['scroll_acc',0.0001],['mat_legion_beast', 0.05],['shd_official',0.03],['blt_dark',0.1],['mat_holy_relic',0.5],['mat_summonorb_core',0.1],['mat_summonorb_shard',1]],   // 🌑 v3.3.33 聖地追加（同名鍵合併·記憶水晶(幻覺：化身)0.25% 在 MEM_DROPS）
         // ===== 🌑 黑暗妖精聖地（依《黑暗妖精聖地.md》·v3.3.33）＝掉落鍵以怪名比對 =====
         '受詛咒的黑暗妖精鬥士': [['mat_holy_relic',0.5],['mat_de_soul_crystal',1],['ear_cursed_black',0.05],['mat_summonorb_core',0.1],['mat_summonorb_shard',1]],
@@ -130,7 +130,7 @@
         '翼龍': [['mat_holy_relic',0.5],['mat_summonorb_core',0.1],['mat_summonorb_shard',1],['bk_greater_haste',1],['bk_elf_preciseshot',0.001]],
         '吉爾塔斯': [['item_giltas_seal',100],['scroll_weapon',100],['scroll_armor',100],['wpn_xbow_abyss',3],['wpn_claw_abyss',3],['wpn_dual_abyss',3],['acc_133',1],['acc_135',1],['acc_136',1],['acc_137',1],['blt_titan',1],['arm_45',5],['arm_46',5],['arm_47',5],['hlm_mr',30],['amu_str',10],['acc_120',10],['acc_121',10],['amu_int',10],['acc_122',10],['amu_cha',10],['acc_summon_ctrl',3],['acc_117',3],['acc_116',3],['acc_demonbane',10],['rng_fire',10],['bk_shock_stun',15],['bk_elf_earthshield',15],['bk_elf_watervital',15],['bk_elf_lifebless',15],['bk_elf_groundtrap',15],['bk_elf_seal',15],['bk_elf_winddash',15],['bk_elf_soul',15],['bk_elf_release',15],['bk_mummy_curse',15],['bk_fire_storm',5],['bk_full_heal',5],['bk_blizzard',5],['bk_disintegrate',1],['bk_resurrection',1],['bk_meteor',1],['bk_holy_dash',15],['bk_abs_barrier',5],['bk_holy_barrier',5],['bk_thunder_storm',5],['bk_invisible',5],['bk_seal',5],['bk_soul_up',5],['bk_royal_burnweapon',15],['bk_reduction_armor',15],['bk_spike_armor',5],['wpn_official_2h',5],['wpn_official_blade',5],['amr_official',5],['hlm_official',5],['arm_official_cloak',5],['glv_official',5],['bot_official',5],['shd_official',5],['wpn_priest_wand',5],['amr_priest',5],['hlm_priest',5],['clk_priest',5],['glv_priest',5],['bot_priest',5],['shd_priest_book',5],['wpn_giltas_sword',0.1],['wpn_giltas_wand',0.1],['amu_pain',10],['amu_doom',10],['bk_counter_barrier',5],['bk_elf_flamesoul',1],['bk_elf_energyboost',5],['bk_dragon_awaken_baraka',5],['wpn_rotten_longbow',0.1],['shd_rebel',0.1],['rng_sage',1]],
         '真‧死亡騎士 冥皇丹特斯': [['wpn_cursed_emperor_blade',5],['wpn_emperor_blade',1],['clk_emperor',1],['amr_emperor',1],['hlm_emperor',1],['glv_emperor',1],['bot_emperor',1],['scroll_weapon',100],['scroll_armor',100]],   // 🌑 v3.4.0 +受詛咒的真．冥皇執行劍 5%（黑暗妖精聖地(2).md）
-        '喚獸師': [['item_tiger_feed',10], ['amr_summoner_robe', 0.01], ['acc_summoner_amulet', 0.001], ['quest_ring_summoner', 0.01]],
+        '喚獸師': [['item_tiger_feed',10], ['amr_summoner_robe', 0.01], ['acc_summoner_amulet', 0.001], ['quest_ring_summoner', 0.2]],
         // ===== 魔獸軍王之室 BOSS =====
         '魔獸軍王巴蘭卡': [['scroll_acc',0.1],['wpn_baranka_claw', 1], ['wpn_baranka_steelclaw', 0.1], ['hlm_official', 2], ['hlm_baranka', 0.1], ['amr_official', 2], ['amr_baranka', 0.1], ['glv_official', 3], ['glv_baranka', 1], ['bot_kingbeast', 0.1], ['bot_official', 3], ['bot_baranka', 0.1], ['blt_dark', 5], ['mat_legion_beast', 100], ['mat_crest_beast', 10]],
         '法令軍王蕾雅': [['scroll_acc',0.1],['wpn_laia_wand', 0.03], ['wpn_priest_wand', 3], ['hlm_priest', 3], ['amr_laia_robe', 0.1], ['amr_kinglaw', 0.1], ['amr_priest', 3], ['glv_priest', 3], ['bot_priest', 3], ['acc_laia_amulet', 0.1], ['acc_law_king_chain', 0.1], ['acc_laia_ring', 0.05], ['blt_dark', 1], ['mat_legion_law', 100], ['mat_crest_law', 10]],
@@ -142,7 +142,7 @@
         '風元素守護者': [['mat_legion_law', 0.05], ['mat_wind_breath', 0.1]],
         '火元素守護者': [['mat_legion_law', 0.05], ['mat_fire_breath', 0.1]],
         '黑暗妖精法師': [['mat_legion_law', 0.05], ['wpn_wand_rasta', 1], ['amr_rasta_robe', 0.1], ['bk_dark_dex', 1], ['bk_tornado', 0.05], ['bk_ice_spike', 1], ['bk_soul_up', 0.01], ['mat_steel_chunk',5]],
-        '黑法師': [['scroll_acc',0.0001],['wpn_darkmage_wand', 0.01], ['amr_darkmage_robe', 0.05], ['acc_darkmage_amulet', 0.001], ['quest_ring_darkmage', 0.01]],
+        '黑法師': [['scroll_acc',0.0001],['wpn_darkmage_wand', 0.01], ['amr_darkmage_robe', 0.05], ['acc_darkmage_amulet', 0.001], ['quest_ring_darkmage', 0.2]],
         // ===== 冥法軍訓練場 =====
         '黑暗復仇者': [['wpn_dark_sword', 0.01], ['amr_official', 0.05], ['mat_legion_necro', 0.1], ['arm_59', 0.1]],
         // ===== 🏛️ 格蘭肯神殿．長老之室 掉落（3 一般怪 + 8 長老 BOSS·各含 死亡騎士之書1%＋修行者經典1%） =====
