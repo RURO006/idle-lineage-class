@@ -1,6 +1,6 @@
 ﻿/** 遊戲核心資料庫 */
 // 🏷️ 遊戲版本號（顯示於登入頁面下方·單一真相來源）：更新版本時只改這一行，登入頁面自動同步。
-const GAME_VERSION = 'v3.8.52';   // 🏷️ 版本號：末段 0~99 線性遞增，達 100 進位（中位 +1、末段歸 0）
+const GAME_VERSION = 'v3.8.53';   // 🏷️ 版本號：末段 0~99 線性遞增，達 100 進位（中位 +1、末段歸 0）
 // ===== 💾 存檔壓縮（LZString compressToUTF16/decompressFromUTF16·MIT, Pieroxy）：localStorage 內部以 UTF-16 壓縮，省 ~89%，繞過 5MB 上限 =====
 //  ⚠️ 只壓 localStorage（存檔位/倉庫/共用桶/_bak）；匯出檔維持明文 JSON（可攜·importSave 用 JSON.parse 驗證）。_lzGet 相容舊明文存檔（無 'LZ1:' 前綴→原樣回傳）。
 var LZString = (function () {
@@ -1193,7 +1193,7 @@ const DB = {
         "item_koreadog_feed": { n: "高麗犬誘食",       type: "pot", req: "all", p: 100, c: "text-cyan-200",    eff: "petlure", lure: "lure_koreadog", dur: 600, d: "熬煮入味的肉乾誘食，幼犬聞香便搖著尾巴跟來。使用後獲得「高麗幼犬誘捕」600秒：期間擊殺 高麗幼犬 時，寵物保管將獲得基本等級的高麗幼犬並失去此狀態。", gachaWeight: 0 },
         // 🐾 進化材料（於包武的寵物保管介面對 Lv30+ 寵物使用進化按鈕時消耗；諾斯製作）
         "item_dragon_heart":  { n: "龍之心",   type: "etc", req: "all", p: 5000, c: "text-red-300",    noUse: true, gachaWeight: 0, d: "幼龍胸腔中仍在搏動的緋紅心臟，蘊含純粹的龍之力。製作材料：亞丁「諾斯」可用它製作勝利果實。" },
-        "item_evo_fruit":     { n: "進化果實", type: "etc", req: "all", p: 0,    c: "text-green-300",  noUse: true, gachaWeight: 0, d: "蘊含生命躍遷之力的神祕果實。亞丁「諾斯」可製作：光明的鱗片×5＋綠寶石×20＋金幣20000。", gachaWeight: 0 },
+        "item_evo_fruit":     { n: "進化果實", type: "etc", req: "all", p: 0,    c: "text-green-300",  noUse: true, gachaWeight: 0, d: "蘊含生命躍遷之力的神祕果實。亞丁「諾斯」可製作：光明的鱗片×2＋綠寶石×20＋金幣20000。", gachaWeight: 0 },
         "item_victory_fruit": { n: "勝利果實", type: "etc", req: "all", p: 0,    c: "text-yellow-300", noUse: true, gachaWeight: 0, d: "凝聚龍之心力量的黃金果實。亞丁「諾斯」可製作：龍之心×1＋高品質紅寶石×5。", gachaWeight: 0 },
         // 不死鳥之心（製作材料，不死鳥 1% 掉落）
         "new_phoenix_heart": { n: "不死鳥之心", type: "etc", p: 0, c: "text-blue-300", noUse: true, gachaWeight: 0, d: "不死鳥體內不滅的核心。製作材料。" },
