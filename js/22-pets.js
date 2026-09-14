@@ -1,7 +1,7 @@
 ﻿// ============================================================
 // js/22-pets.js — 🐾 夥伴系統 v2（v3.2.17 依「夥伴更新.md」全面取代舊項圈系統）
 //   ・寵物＝獨立實體（等級/經驗/HP/MP/技能），非道具；捕捉入「寵物保管」（同模式全角色共通、上限＝PET_STORAGE_MAX·v3.8.40 用戶調整為 64）
-//   ・出戰上限 8 隻＋魅力門檻（6/12/15/20）；每隻未倒地寵物各得玩家完整經驗；升級需求＝玩家表 1/10
+//   ・出戰上限 8 隻＋魅力門檻（4/6/8/10）；每隻未倒地寵物各得玩家完整經驗；升級需求＝玩家表 1/10
 //   ・死亡 5 秒後復活卷軸自動復活；返生術可立即復活；回到安全區（非野外）免費復活
 //   ・戰鬥：無敵人在狩獵區八方向閒晃；有敵人自動攻擊最近的敵人（受擊權重 物理4/特殊3/魔法2）
 //   ・進化（包武·Lv30+·僅一般型態·v3.2.63）：一般＋進化果實→對應高等；一般＋勝利果實→黃金龍（兩果實都有→可選）；高等/黃金龍皆最終型態；進化時先按原型態補算至玩家滿等（目前 Lv100），再以 HP/MP 的 50% 作為進化後數值
@@ -14,52 +14,52 @@
 // sk: 技能清單（w=權重擇一）；kind:'magic'(魔法傷害) 'extra'(額外普攻) 'debuff'(異常)；drainHalf=吸傷害一半HP
 const PET_BOOK = {
     // ===== 基礎（起始等級 5）=====
-    '牧羊犬':   { kind:'phys', tier:0, lv0:5, hp0:30, mp0:5,  hpUp:[5,8],  mpUp:[1,2], hpReg:5, mpReg:0, apm:50,    capm:0,     stun:0.58, cha:6,  evo:'高等牧羊犬', sk:[] },
-    '貓':       { kind:'mag',  tier:0, lv0:5, hp0:20, mp0:30, hpUp:[3,6],  mpUp:[3,5], hpReg:2, mpReg:5, apm:55.38, capm:51.43, stun:0.58, cha:6,  evo:'高等貓', sk:[{ n:'貓寒冷戰慄', mp:7, kind:'magic', d:[1,10], ele:'none', drainHalf:true }] },
-    '熊':       { kind:'phys', tier:0, lv0:5, hp0:50, mp0:0,  hpUp:[8,15], mpUp:[1,2], hpReg:8, mpReg:0, apm:38.8,  capm:0,     stun:0.67, cha:6,  evo:'高等熊', sk:[] },
-    '杜賓狗':   { kind:'phys', tier:0, lv0:5, hp0:20, mp0:5,  hpUp:[3,6],  mpUp:[1,2], hpReg:5, mpReg:0, apm:60,    capm:0,     stun:0.58, cha:6,  evo:'高等杜賓狗', sk:[] },
-    '狼':       { kind:'phys', tier:0, lv0:5, hp0:30, mp0:5,  hpUp:[3,8],  mpUp:[1,2], hpReg:5, mpReg:0, apm:57.6,  capm:0,     stun:0.58, cha:6,  evo:'高等狼', sk:[] },
-    '浣熊':     { kind:'mag',  tier:0, lv0:5, hp0:30, mp0:20, hpUp:[3,9],  mpUp:[2,4], hpReg:2, mpReg:5, apm:49.66, capm:72,    stun:0.58, cha:6,  evo:'高等浣熊', sk:[{ n:'浣熊緩速術', mp:15, kind:'debuff', debuff:'slow', acc:50 }] },
-    '小獵犬':   { kind:'mag',  tier:0, lv0:5, hp0:30, mp0:20, hpUp:[4,8],  mpUp:[2,4], hpReg:2, mpReg:5, apm:60,    capm:43.64, stun:0.58, cha:6,  evo:'高等小獵犬', sk:[{ n:'小獵犬地獄之牙', mp:6, kind:'magic', d:[1,15], ele:'earth' }] },
-    '聖伯納犬': { kind:'mag',  tier:0, lv0:5, hp0:30, mp0:30, hpUp:[6,10], mpUp:[2,4], hpReg:2, mpReg:5, apm:40,    capm:38.92, stun:0.58, cha:6,  evo:'高等聖伯納犬', sk:[{ n:'聖伯納犬風刃', mp:6, kind:'magic', d:[1,15], ele:'wind' }] },
-    '狐狸':     { kind:'mag',  tier:0, lv0:5, hp0:15, mp0:30, hpUp:[3,9],  mpUp:[2,3], hpReg:2, mpReg:5, apm:48,    capm:40,    stun:0.58, cha:6,  evo:'高等狐狸', sk:[{ n:'狐狸火箭', mp:6, kind:'magic', d:[1,15], ele:'fire' }] },
-    '暴走兔':   { kind:'mag',  tier:0, lv0:5, hp0:20, mp0:30, hpUp:[3,8],  mpUp:[2,5], hpReg:2, mpReg:5, apm:51.43, capm:51.43, stun:0.58, cha:6,  evo:'高等暴走兔', sk:[{ n:'暴走兔冰錐', mp:8, kind:'magic', d:[1,20], ele:'water' }] },
-    '哈士奇':   { kind:'phys', tier:0, lv0:5, hp0:50, mp0:5,  hpUp:[8,12], mpUp:[1,2], hpReg:5, mpReg:0, apm:55.38, capm:0,     stun:0.5,  cha:6,  evo:'高等哈士奇', sk:[] },
-    '柯利':     { kind:'phys', tier:0, lv0:5, hp0:40, mp0:5,  hpUp:[8,11], mpUp:[3,4], hpReg:5, mpReg:0, apm:60,    capm:0,     stun:0.54, cha:6,  evo:'高等柯利', sk:[] },
-    '虎男':     { kind:'spec', tier:0, lv0:5, hp0:40, mp0:5,  hpUp:[8,14], mpUp:[3,5], hpReg:5, mpReg:0, apm:72,    capm:0,     stun:0.58, cha:12, evo:'真‧虎男', sk:[] },
-    '高麗幼犬': { kind:'spec', tier:0, lv0:5, hp0:30, mp0:30, hpUp:[3,6],  mpUp:[3,5], hpReg:5, mpReg:5, apm:45,    capm:51.43, stun:0.58, cha:12, evo:'高麗犬', sk:[{ n:'瘋狂咬擊', mp:10, kind:'magic', d:[2,10], ele:'none' }] },
-    '袋鼠':     { kind:'spec', tier:0, lv0:5, hp0:25, mp0:5,  hpUp:[3,8],  mpUp:[2,5], hpReg:2, mpReg:3, apm:90,    capm:72,    stun:0.58, cha:12, drPierce:0.35, evo:'高等袋鼠', sk:[{ n:'袋鼠火焰拳', mp:6, kind:'magic', d:[1,18], ele:'fire' }] },
-    '熊貓':     { kind:'spec', tier:0, lv0:5, hp0:30, mp0:10, hpUp:[8,11], mpUp:[2,4], hpReg:2, mpReg:3, apm:60,    capm:68.57, stun:0.58, cha:12, evo:'高等熊貓', sk:[{ n:'熊貓爆擊', mp:9, kind:'extra', crit:true, add:0 }] },
-    '猴子':     { kind:'spec', tier:0, lv0:5, hp0:30, mp0:30, hpUp:[3,8],  mpUp:[3,5], hpReg:2, mpReg:3, apm:51.43, capm:51.43, stun:0.58, cha:12, evo:'超級猴子', sk:[{ n:'猴子氣功波', mp:8, kind:'magic', d:[1,20], ele:'none' }] },
-    '頑皮龍':   { kind:'spec', tier:0, lv0:5, hp0:40, mp0:10, hpUp:[8,14], mpUp:[3,5], hpReg:5, mpReg:8, apm:53.33, capm:48,    stun:0.58, cha:15, evo:'高等頑皮龍', sk:[{ n:'頑皮龍火球', mp:10, kind:'magic', d:[2,10], ele:'fire' }] },
-    '淘氣龍':   { kind:'spec', tier:0, lv0:5, hp0:40, mp0:10, hpUp:[8,14], mpUp:[3,5], hpReg:8, mpReg:1, apm:60,    capm:0,     stun:0.58, cha:15, evo:'高等淘氣龍', sk:[] },
+    '牧羊犬':   { kind:'phys', tier:0, lv0:5, hp0:30, mp0:5,  hpUp:[5,8],  mpUp:[1,2], hpReg:5, mpReg:0, apm:50,    capm:0,     stun:0.58, cha:4,  evo:'高等牧羊犬', sk:[] },
+    '貓':       { kind:'mag',  tier:0, lv0:5, hp0:20, mp0:30, hpUp:[3,6],  mpUp:[3,5], hpReg:2, mpReg:5, apm:55.38, capm:51.43, stun:0.58, cha:4,  evo:'高等貓', sk:[{ n:'貓寒冷戰慄', mp:7, kind:'magic', d:[1,10], ele:'none', drainHalf:true }] },
+    '熊':       { kind:'phys', tier:0, lv0:5, hp0:50, mp0:0,  hpUp:[8,15], mpUp:[1,2], hpReg:8, mpReg:0, apm:38.8,  capm:0,     stun:0.67, cha:4,  evo:'高等熊', sk:[] },
+    '杜賓狗':   { kind:'phys', tier:0, lv0:5, hp0:20, mp0:5,  hpUp:[3,6],  mpUp:[1,2], hpReg:5, mpReg:0, apm:60,    capm:0,     stun:0.58, cha:4,  evo:'高等杜賓狗', sk:[] },
+    '狼':       { kind:'phys', tier:0, lv0:5, hp0:30, mp0:5,  hpUp:[3,8],  mpUp:[1,2], hpReg:5, mpReg:0, apm:57.6,  capm:0,     stun:0.58, cha:4,  evo:'高等狼', sk:[] },
+    '浣熊':     { kind:'mag',  tier:0, lv0:5, hp0:30, mp0:20, hpUp:[3,9],  mpUp:[2,4], hpReg:2, mpReg:5, apm:49.66, capm:72,    stun:0.58, cha:4,  evo:'高等浣熊', sk:[{ n:'浣熊緩速術', mp:15, kind:'debuff', debuff:'slow', acc:50 }] },
+    '小獵犬':   { kind:'mag',  tier:0, lv0:5, hp0:30, mp0:20, hpUp:[4,8],  mpUp:[2,4], hpReg:2, mpReg:5, apm:60,    capm:43.64, stun:0.58, cha:4,  evo:'高等小獵犬', sk:[{ n:'小獵犬地獄之牙', mp:6, kind:'magic', d:[1,15], ele:'earth' }] },
+    '聖伯納犬': { kind:'mag',  tier:0, lv0:5, hp0:30, mp0:30, hpUp:[6,10], mpUp:[2,4], hpReg:2, mpReg:5, apm:40,    capm:38.92, stun:0.58, cha:4,  evo:'高等聖伯納犬', sk:[{ n:'聖伯納犬風刃', mp:6, kind:'magic', d:[1,15], ele:'wind' }] },
+    '狐狸':     { kind:'mag',  tier:0, lv0:5, hp0:15, mp0:30, hpUp:[3,9],  mpUp:[2,3], hpReg:2, mpReg:5, apm:48,    capm:40,    stun:0.58, cha:4,  evo:'高等狐狸', sk:[{ n:'狐狸火箭', mp:6, kind:'magic', d:[1,15], ele:'fire' }] },
+    '暴走兔':   { kind:'mag',  tier:0, lv0:5, hp0:20, mp0:30, hpUp:[3,8],  mpUp:[2,5], hpReg:2, mpReg:5, apm:51.43, capm:51.43, stun:0.58, cha:4,  evo:'高等暴走兔', sk:[{ n:'暴走兔冰錐', mp:8, kind:'magic', d:[1,20], ele:'water' }] },
+    '哈士奇':   { kind:'phys', tier:0, lv0:5, hp0:50, mp0:5,  hpUp:[8,12], mpUp:[1,2], hpReg:5, mpReg:0, apm:55.38, capm:0,     stun:0.5,  cha:4,  evo:'高等哈士奇', sk:[] },
+    '柯利':     { kind:'phys', tier:0, lv0:5, hp0:40, mp0:5,  hpUp:[8,11], mpUp:[3,4], hpReg:5, mpReg:0, apm:60,    capm:0,     stun:0.54, cha:4,  evo:'高等柯利', sk:[] },
+    '虎男':     { kind:'spec', tier:0, lv0:5, hp0:40, mp0:5,  hpUp:[8,14], mpUp:[3,5], hpReg:5, mpReg:0, apm:72,    capm:0,     stun:0.58, cha:6, evo:'真‧虎男', sk:[] },
+    '高麗幼犬': { kind:'spec', tier:0, lv0:5, hp0:30, mp0:30, hpUp:[3,6],  mpUp:[3,5], hpReg:5, mpReg:5, apm:45,    capm:51.43, stun:0.58, cha:6, evo:'高麗犬', sk:[{ n:'瘋狂咬擊', mp:10, kind:'magic', d:[2,10], ele:'none' }] },
+    '袋鼠':     { kind:'spec', tier:0, lv0:5, hp0:25, mp0:5,  hpUp:[3,8],  mpUp:[2,5], hpReg:2, mpReg:3, apm:90,    capm:72,    stun:0.58, cha:6, drPierce:0.35, evo:'高等袋鼠', sk:[{ n:'袋鼠火焰拳', mp:6, kind:'magic', d:[1,18], ele:'fire' }] },
+    '熊貓':     { kind:'spec', tier:0, lv0:5, hp0:30, mp0:10, hpUp:[8,11], mpUp:[2,4], hpReg:2, mpReg:3, apm:60,    capm:68.57, stun:0.58, cha:6, evo:'高等熊貓', sk:[{ n:'熊貓爆擊', mp:9, kind:'extra', crit:true, add:0 }] },
+    '猴子':     { kind:'spec', tier:0, lv0:5, hp0:30, mp0:30, hpUp:[3,8],  mpUp:[3,5], hpReg:2, mpReg:3, apm:51.43, capm:51.43, stun:0.58, cha:6, evo:'超級猴子', sk:[{ n:'猴子氣功波', mp:8, kind:'magic', d:[1,20], ele:'none' }] },
+    '頑皮龍':   { kind:'spec', tier:0, lv0:5, hp0:40, mp0:10, hpUp:[8,14], mpUp:[3,5], hpReg:5, mpReg:8, apm:53.33, capm:48,    stun:0.58, cha:8, evo:'高等頑皮龍', sk:[{ n:'頑皮龍火球', mp:10, kind:'magic', d:[2,10], ele:'fire' }] },
+    '淘氣龍':   { kind:'spec', tier:0, lv0:5, hp0:40, mp0:10, hpUp:[8,14], mpUp:[3,5], hpReg:8, mpReg:1, apm:60,    capm:0,     stun:0.58, cha:8, evo:'高等淘氣龍', sk:[] },
     // ===== 高等（一般型態＋進化果實進化取得·Lv1 起·最終型態不可再進化）=====
-    '高等牧羊犬':   { kind:'phys', tier:1, lv0:1, hpUp:[5,8],   mpUp:[1,2], hpReg:8,  mpReg:0,  apm:55.38, capm:0,     stun:0.58, cha:6,  evo:null, sk:[] },
-    '高等貓':       { kind:'mag',  tier:1, lv0:1, hpUp:[3,6],   mpUp:[3,5], hpReg:2,  mpReg:10, apm:57.6,  capm:51.43, stun:0.58, cha:6,  evo:null, sk:[{ n:'高等貓寒冷戰慄', mp:10, kind:'magic', d:[2,10], ele:'none', drainHalf:true }] },
-    '高等熊':       { kind:'phys', tier:1, lv0:1, hpUp:[10,15], mpUp:[1,2], hpReg:10, mpReg:0,  apm:45,    capm:0,     stun:0.58, cha:6,  evo:null, sk:[] },
-    '高等杜賓狗':   { kind:'phys', tier:1, lv0:1, hpUp:[4,6],   mpUp:[1,2], hpReg:8,  mpReg:0,  apm:65.45, capm:0,     stun:0.58, cha:6,  evo:null, sk:[] },
-    '高等狼':       { kind:'phys', tier:1, lv0:1, hpUp:[3,9],   mpUp:[1,2], hpReg:8,  mpReg:0,  apm:65.45, capm:0,     stun:0.58, cha:6,  evo:null, sk:[] },
-    '高等浣熊':     { kind:'mag',  tier:1, lv0:1, hpUp:[5,9],   mpUp:[3,5], hpReg:2,  mpReg:5,  apm:65.45, capm:80,    stun:0.58, cha:6,  evo:null, sk:[{ n:'高等浣熊弱化術', mp:5, kind:'debuff', debuff:'weaken', w:30, acc:60 }, { n:'高等浣熊疾病術', mp:10, kind:'debuff', debuff:'disease', w:30, acc:55 }, { n:'高等浣熊緩速術', mp:15, kind:'debuff', debuff:'slow', w:50, acc:50 }] },
-    '高等小獵犬':   { kind:'mag',  tier:1, lv0:1, hpUp:[4,8],   mpUp:[2,4], hpReg:2,  mpReg:8,  apm:60,    capm:53.33, stun:0.58, cha:6,  evo:null, sk:[{ n:'高等小獵犬地獄之牙', mp:10, kind:'magic', d:[2,15], ele:'earth' }] },
-    '高等聖伯納犬': { kind:'mag',  tier:1, lv0:1, hpUp:[6,10],  mpUp:[2,4], hpReg:2,  mpReg:8,  apm:55.38, capm:48,    stun:0.58, cha:6,  evo:null, sk:[{ n:'高等聖伯納犬風刃', mp:10, kind:'magic', d:[2,15], ele:'wind' }] },
-    '高等狐狸':     { kind:'mag',  tier:1, lv0:1, hpUp:[3,9],   mpUp:[2,4], hpReg:2,  mpReg:8,  apm:49.66, capm:48,    stun:0.5,  cha:6,  evo:null, sk:[{ n:'高等狐狸火箭', mp:10, kind:'magic', d:[2,15], ele:'fire' }] },
-    '高等暴走兔':   { kind:'mag',  tier:1, lv0:1, hpUp:[3,8],   mpUp:[2,5], hpReg:2,  mpReg:10, apm:55.38, capm:51.43, stun:0.58, cha:6,  evo:null, sk:[{ n:'高等暴走兔冰錐', mp:15, kind:'magic', d:[2,20], ele:'water' }] },
-    '高等哈士奇':   { kind:'phys', tier:1, lv0:1, hpUp:[10,15], mpUp:[1,2], hpReg:8,  mpReg:0,  apm:55.38, capm:0,     stun:0.5,  cha:6,  evo:null, sk:[] },
-    '高等柯利':     { kind:'phys', tier:1, lv0:1, hpUp:[10,14], mpUp:[3,4], hpReg:8,  mpReg:0,  apm:60,    capm:0,     stun:0.54, cha:6,  evo:null, sk:[] },
-    '真‧虎男':     { kind:'spec', tier:1, lv0:1, hpUp:[10,15], mpUp:[3,5], hpReg:5,  mpReg:5,  apm:72,    capm:60,    stun:0.58, cha:12, evo:null, sk:[{ n:'爆裂勾爪', mp:5, kind:'extra', add:5 }] },
-    '高麗犬':       { kind:'spec', tier:1, lv0:1, hpUp:[3,8],   mpUp:[3,5], hpReg:2,  mpReg:10, apm:60,    capm:51.43, stun:0.58, cha:12, evo:null, sk:[{ n:'瘋狂咬擊', mp:10, kind:'magic', d:[2,10], ele:'none', w:50 }, { n:'汪汪咬擊', mp:10, kind:'magic', d:[3,10], ele:'none', w:50 }] },
-    '高等袋鼠':     { kind:'spec', tier:1, lv0:1, hpUp:[3,8],   mpUp:[3,5], hpReg:2,  mpReg:5,  apm:90,    capm:72,    stun:0.58, cha:12, drPierce:0.35, evo:null, sk:[{ n:'高等袋鼠火焰拳', mp:12, kind:'magic', d:[2,18], ele:'fire' }] },
-    '高等熊貓':     { kind:'spec', tier:1, lv0:1, hpUp:[8,16],  mpUp:[2,4], hpReg:2,  mpReg:5,  apm:60,    capm:68.57, stun:0.58, cha:12, evo:null, sk:[{ n:'高等熊貓爆擊', mp:18, kind:'extra', crit:true, add:10 }] },
-    '超級猴子':     { kind:'spec', tier:1, lv0:1, hpUp:[3,8],   mpUp:[3,5], hpReg:2,  mpReg:5,  apm:51.43, capm:51.43, stun:0.58, cha:12, evo:null, sk:[{ n:'超級猴子氣功波', mp:15, kind:'magic', d:[2,20], ele:'none' }] },
-    '高等頑皮龍':   { kind:'spec', tier:1, lv0:1, hpUp:[10,15], mpUp:[3,5], hpReg:5,  mpReg:8,  apm:55.38, capm:51.43, stun:0.58, cha:15, evo:null, sk:[{ n:'頑皮龍火球', mp:10, kind:'magic', d:[2,10], ele:'fire', w:50 }, { n:'頑皮龍大火球', mp:12, kind:'magic', d:[2,12], ele:'fire', w:50 }] },
-    '高等淘氣龍':   { kind:'spec', tier:1, lv0:1, hpUp:[10,15], mpUp:[3,5], hpReg:8,  mpReg:1,  apm:65.45, capm:0,     stun:0.58, cha:15, evo:null, sk:[] },
+    '高等牧羊犬':   { kind:'phys', tier:1, lv0:1, hpUp:[5,8],   mpUp:[1,2], hpReg:8,  mpReg:0,  apm:55.38, capm:0,     stun:0.58, cha:4,  evo:null, sk:[] },
+    '高等貓':       { kind:'mag',  tier:1, lv0:1, hpUp:[3,6],   mpUp:[3,5], hpReg:2,  mpReg:10, apm:57.6,  capm:51.43, stun:0.58, cha:4,  evo:null, sk:[{ n:'高等貓寒冷戰慄', mp:10, kind:'magic', d:[2,10], ele:'none', drainHalf:true }] },
+    '高等熊':       { kind:'phys', tier:1, lv0:1, hpUp:[10,15], mpUp:[1,2], hpReg:10, mpReg:0,  apm:45,    capm:0,     stun:0.58, cha:4,  evo:null, sk:[] },
+    '高等杜賓狗':   { kind:'phys', tier:1, lv0:1, hpUp:[4,6],   mpUp:[1,2], hpReg:8,  mpReg:0,  apm:65.45, capm:0,     stun:0.58, cha:4,  evo:null, sk:[] },
+    '高等狼':       { kind:'phys', tier:1, lv0:1, hpUp:[3,9],   mpUp:[1,2], hpReg:8,  mpReg:0,  apm:65.45, capm:0,     stun:0.58, cha:4,  evo:null, sk:[] },
+    '高等浣熊':     { kind:'mag',  tier:1, lv0:1, hpUp:[5,9],   mpUp:[3,5], hpReg:2,  mpReg:5,  apm:65.45, capm:80,    stun:0.58, cha:4,  evo:null, sk:[{ n:'高等浣熊弱化術', mp:5, kind:'debuff', debuff:'weaken', w:30, acc:60 }, { n:'高等浣熊疾病術', mp:10, kind:'debuff', debuff:'disease', w:30, acc:55 }, { n:'高等浣熊緩速術', mp:15, kind:'debuff', debuff:'slow', w:50, acc:50 }] },
+    '高等小獵犬':   { kind:'mag',  tier:1, lv0:1, hpUp:[4,8],   mpUp:[2,4], hpReg:2,  mpReg:8,  apm:60,    capm:53.33, stun:0.58, cha:4,  evo:null, sk:[{ n:'高等小獵犬地獄之牙', mp:10, kind:'magic', d:[2,15], ele:'earth' }] },
+    '高等聖伯納犬': { kind:'mag',  tier:1, lv0:1, hpUp:[6,10],  mpUp:[2,4], hpReg:2,  mpReg:8,  apm:55.38, capm:48,    stun:0.58, cha:4,  evo:null, sk:[{ n:'高等聖伯納犬風刃', mp:10, kind:'magic', d:[2,15], ele:'wind' }] },
+    '高等狐狸':     { kind:'mag',  tier:1, lv0:1, hpUp:[3,9],   mpUp:[2,4], hpReg:2,  mpReg:8,  apm:49.66, capm:48,    stun:0.5,  cha:4,  evo:null, sk:[{ n:'高等狐狸火箭', mp:10, kind:'magic', d:[2,15], ele:'fire' }] },
+    '高等暴走兔':   { kind:'mag',  tier:1, lv0:1, hpUp:[3,8],   mpUp:[2,5], hpReg:2,  mpReg:10, apm:55.38, capm:51.43, stun:0.58, cha:4,  evo:null, sk:[{ n:'高等暴走兔冰錐', mp:15, kind:'magic', d:[2,20], ele:'water' }] },
+    '高等哈士奇':   { kind:'phys', tier:1, lv0:1, hpUp:[10,15], mpUp:[1,2], hpReg:8,  mpReg:0,  apm:55.38, capm:0,     stun:0.5,  cha:4,  evo:null, sk:[] },
+    '高等柯利':     { kind:'phys', tier:1, lv0:1, hpUp:[10,14], mpUp:[3,4], hpReg:8,  mpReg:0,  apm:60,    capm:0,     stun:0.54, cha:4,  evo:null, sk:[] },
+    '真‧虎男':     { kind:'spec', tier:1, lv0:1, hpUp:[10,15], mpUp:[3,5], hpReg:5,  mpReg:5,  apm:72,    capm:60,    stun:0.58, cha:6, evo:null, sk:[{ n:'爆裂勾爪', mp:5, kind:'extra', add:5 }] },
+    '高麗犬':       { kind:'spec', tier:1, lv0:1, hpUp:[3,8],   mpUp:[3,5], hpReg:2,  mpReg:10, apm:60,    capm:51.43, stun:0.58, cha:6, evo:null, sk:[{ n:'瘋狂咬擊', mp:10, kind:'magic', d:[2,10], ele:'none', w:50 }, { n:'汪汪咬擊', mp:10, kind:'magic', d:[3,10], ele:'none', w:50 }] },
+    '高等袋鼠':     { kind:'spec', tier:1, lv0:1, hpUp:[3,8],   mpUp:[3,5], hpReg:2,  mpReg:5,  apm:90,    capm:72,    stun:0.58, cha:6, drPierce:0.35, evo:null, sk:[{ n:'高等袋鼠火焰拳', mp:12, kind:'magic', d:[2,18], ele:'fire' }] },
+    '高等熊貓':     { kind:'spec', tier:1, lv0:1, hpUp:[8,16],  mpUp:[2,4], hpReg:2,  mpReg:5,  apm:60,    capm:68.57, stun:0.58, cha:6, evo:null, sk:[{ n:'高等熊貓爆擊', mp:18, kind:'extra', crit:true, add:10 }] },
+    '超級猴子':     { kind:'spec', tier:1, lv0:1, hpUp:[3,8],   mpUp:[3,5], hpReg:2,  mpReg:5,  apm:51.43, capm:51.43, stun:0.58, cha:6, evo:null, sk:[{ n:'超級猴子氣功波', mp:15, kind:'magic', d:[2,20], ele:'none' }] },
+    '高等頑皮龍':   { kind:'spec', tier:1, lv0:1, hpUp:[10,15], mpUp:[3,5], hpReg:5,  mpReg:8,  apm:55.38, capm:51.43, stun:0.58, cha:8, evo:null, sk:[{ n:'頑皮龍火球', mp:10, kind:'magic', d:[2,10], ele:'fire', w:50 }, { n:'頑皮龍大火球', mp:12, kind:'magic', d:[2,12], ele:'fire', w:50 }] },
+    '高等淘氣龍':   { kind:'spec', tier:1, lv0:1, hpUp:[10,15], mpUp:[3,5], hpReg:8,  mpReg:1,  apm:65.45, capm:0,     stun:0.58, cha:8, evo:null, sk:[] },
     // ===== 黃金龍（v3.2.63：任一「一般型態」＋勝利果實可直接進化取得·與高等型態並列·Lv1 起·最終型態不可再進化）=====
-    '黃金龍':       { kind:'spec', tier:2, lv0:1, hpUp:[8,12],  mpUp:[2,4], hpReg:8,  mpReg:4,  apm:72,    capm:45,    stun:0.58, cha:20, evo:null, sk:[{ n:'火焰噴射', mp:15, kind:'magic', d:[1,15], ele:'fire', aoe:true, w:50 }, { n:'火球', mp:10, kind:'magic', d:[2,10], ele:'fire', w:50 }] },
-    // ===== 蜥蜴四型態（🦎 v3.6.43 用戶規格·獲得管道待補·tier0＋evo:null＝無法進化·魅力 15 比照龍系〔規格未給·暫定〕）=====
-    '厄運蜥蜴': { kind:'spec', tier:0, goldenAtk:1.60, goldenMagic:1.60, lv0:5, hp0:150, mp0:40, hpUp:[12,24], mpUp:[5,8],  hpReg:15, mpReg:10, apm:72, capm:48, stun:0.58, cha:15, evo:null, sk:[{ n:'火焰噴射', mp:20, kind:'magic', d:[1,25], ele:'fire',  aoe:true, w:90 }, { n:'炎爪', mp:0, kind:'dot', dot:'burn',   dps:10, dur:6, w:10 }] },
-    '災厄蜥蜴': { kind:'spec', tier:0, goldenAtk:2.05, goldenMagic:2.05, acMod:-5, mrBonus:20, lv0:5, hp0:160, mp0:20, hpUp:[12,26], mpUp:[5,7],  hpReg:15, mpReg:10, apm:60, capm:48, stun:0.50, cha:15, evo:null, sk:[{ n:'大地震裂', mp:20, kind:'magic', d:[1,25], ele:'earth', aoe:true, w:90 }, { n:'堅硬', mp:0, kind:'selfbuff', dr:10, dur:6, w:10 }] },
-    '破滅蜥蜴': { kind:'spec', tier:0, goldenAtk:2.10, goldenMagic:1.05, drPierce:0.35, lv0:5, hp0:150, mp0:40, hpUp:[12,22], mpUp:[5,7],  hpReg:15, mpReg:10, apm:90, capm:48, stun:0.58, cha:15, evo:null, sk:[{ n:'龍捲風', mp:20, kind:'magic', d:[1,25], ele:'wind',  aoe:true, w:90 }, { n:'風刃', mp:0, kind:'dot', dot:'bleed',  dps:10, dur:6, w:10 }] },
-    '詛咒蜥蜴': { kind:'spec', tier:0, goldenAtk:1.35, goldenMagic:2.60, lv0:5, hp0:120, mp0:60, hpUp:[10,20], mpUp:[6,10], hpReg:10, mpReg:15, apm:60, capm:48, stun:0.58, cha:15, evo:null, sk:[{ n:'冰雪暴', mp:20, kind:'magic', d:[1,25], ele:'water', aoe:true, freezeCh:3, w:90 }, { n:'汙濁', mp:0, kind:'dot', dot:'poison', dps:10, dur:6, w:10 }] }
+    '黃金龍':       { kind:'spec', tier:2, lv0:1, hpUp:[8,12],  mpUp:[2,4], hpReg:8,  mpReg:4,  apm:72,    capm:45,    stun:0.58, cha:10, evo:null, sk:[{ n:'火焰噴射', mp:15, kind:'magic', d:[1,15], ele:'fire', aoe:true, w:50 }, { n:'火球', mp:10, kind:'magic', d:[2,10], ele:'fire', w:50 }] },
+    // ===== 蜥蜴四型態（🦎 v3.6.43 用戶規格·獲得管道待補·tier0＋evo:null＝無法進化·魅力 8 比照龍系）=====
+    '厄運蜥蜴': { kind:'spec', tier:0, goldenAtk:1.60, goldenMagic:1.60, lv0:5, hp0:150, mp0:40, hpUp:[12,24], mpUp:[5,8],  hpReg:15, mpReg:10, apm:72, capm:48, stun:0.58, cha:8, evo:null, sk:[{ n:'火焰噴射', mp:20, kind:'magic', d:[1,25], ele:'fire',  aoe:true, w:90 }, { n:'炎爪', mp:0, kind:'dot', dot:'burn',   dps:10, dur:6, w:10 }] },
+    '災厄蜥蜴': { kind:'spec', tier:0, goldenAtk:2.05, goldenMagic:2.05, acMod:-5, mrBonus:20, lv0:5, hp0:160, mp0:20, hpUp:[12,26], mpUp:[5,7],  hpReg:15, mpReg:10, apm:60, capm:48, stun:0.50, cha:8, evo:null, sk:[{ n:'大地震裂', mp:20, kind:'magic', d:[1,25], ele:'earth', aoe:true, w:90 }, { n:'堅硬', mp:0, kind:'selfbuff', dr:10, dur:6, w:10 }] },
+    '破滅蜥蜴': { kind:'spec', tier:0, goldenAtk:2.10, goldenMagic:1.05, drPierce:0.35, lv0:5, hp0:150, mp0:40, hpUp:[12,22], mpUp:[5,7],  hpReg:15, mpReg:10, apm:90, capm:48, stun:0.58, cha:8, evo:null, sk:[{ n:'龍捲風', mp:20, kind:'magic', d:[1,25], ele:'wind',  aoe:true, w:90 }, { n:'風刃', mp:0, kind:'dot', dot:'bleed',  dps:10, dur:6, w:10 }] },
+    '詛咒蜥蜴': { kind:'spec', tier:0, goldenAtk:1.35, goldenMagic:2.60, lv0:5, hp0:120, mp0:60, hpUp:[10,20], mpUp:[6,10], hpReg:10, mpReg:15, apm:60, capm:48, stun:0.58, cha:8, evo:null, sk:[{ n:'冰雪暴', mp:20, kind:'magic', d:[1,25], ele:'water', aoe:true, freezeCh:3, w:90 }, { n:'汙濁', mp:0, kind:'dot', dot:'poison', dps:10, dur:6, w:10 }] }
 };
 const PET_KIND_WEIGHT = { phys: 4, spec: 3, mag: 2 };   // 受擊權重（怪物一般攻擊選目標）
 const PET_KIND_LABEL = { phys: '物理型', spec: '特殊型', mag: '魔法型' };
@@ -171,10 +171,10 @@ function petMigrateExpReqV3(p) {   // Lv70+ 玩家需求改版時，寵物同樣
 }
 function petCharmCombatBonus(owner) {
     // 🐾 v3.2.24 每一隻獨立計算：移除 /sqrt(出戰隻數) 稀釋——每隻寵物都拿完整魅力加成（隻數多寡不影響個體）
-    // 👑 v3.4.28 魅力係數固定 0.10（原「夥伴精通→0.12」已移除·精通效果見下）
+    // 👑 v3.4.28 魅力係數固定 0.30（原「夥伴精通→0.12」已移除·精通效果見下）
     owner = owner || player;
     let cha = Math.max(0, (owner && owner.d && owner.d.cha) || 0);
-    let v = Math.floor(cha * 0.10);
+    let v = Math.floor(cha * 0.30);
     return { dmg: v, hit: v };
 }
 // 👑 v3.4.36 王族「夥伴精通」(k_royal_pet)（用戶指定）：出戰寵物 傷害 ×1.5、命中 ×1.5、受到傷害 −50%（v3.4.29 為 −30%）。
