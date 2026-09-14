@@ -189,6 +189,26 @@
         return driveState.tokenPromise;
     }
 
+    // 先嘗試在背景恢復既有 Google 授權；只有 Google 無法靜默發 token 時，
+    // 才顯示互動式登入／授權畫面。
+    async function getAccessTokenWithFallback() {
+        try {
+            return await getAccessToken(false);
+        } catch (silentError) {
+            return getAccessToken(true);
+        }
+    }
+
+    // 頁面載入時只做靜默恢復；失敗時保持未登入，不主動打開 Google 視窗。
+    async function restoreAccessTokenSilently() {
+        if (!configClientId() || driveState.accessToken) return;
+        try {
+            await getAccessToken(false);
+        } catch (silentError) {
+            updateCloudUi();
+        }
+    }
+
     async function driveRequest(url, options, retried) {
         const token = await getAccessToken(false);
         const opts = Object.assign({}, options || {});
@@ -759,7 +779,7 @@
         updateCloudUi();
         setStatus('Google 雲端：正在讀取…', 'is-busy');
         try {
-            await getAccessToken(!driveState.accessToken);
+            await getAccessTokenWithFallback();
             const local = localSnapshot();
             if (!local) {
                 driveState.busy = false;
@@ -841,7 +861,7 @@
         updateCloudUi();
         setStatus('Google 雲端：正在登入…', 'is-busy');
         try {
-            await getAccessToken(true);
+            await getAccessTokenWithFallback();
             driveState.busy = false;
             updateCloudUi();
             setStatus('Google 雲端：已連線', 'is-ok');
@@ -872,4 +892,5 @@
     global.cloudSyncDownload = syncDownload;
 
     updateCloudUi();
+    restoreAccessTokenSilently();
 })(window);
