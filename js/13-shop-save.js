@@ -1654,7 +1654,14 @@ function loadDeleteSelected(){
 (function animateLoadSelectPreview(){
     function tick(now){
         const panel = document.getElementById('load-select-panel');
-        if(panel && !panel.classList.contains('hidden') && now - _loadAnimState.lastAt >= _loadAnimState.stepMs){
+        const creationScreen = document.getElementById('creation-screen');
+        const gameScreen = document.getElementById('game-screen');
+        // 選角面板是創角畫面的子層；登入後父層可能先被隱藏，不能只看面板自身的 hidden 狀態。
+        // 同時確認遊戲畫面尚未顯示，避免背景中的逐幀切圖持續觸發圖片載入。
+        const selectionVisible = panel && !panel.classList.contains('hidden')
+            && (!creationScreen || !creationScreen.classList.contains('hidden'))
+            && (!gameScreen || gameScreen.classList.contains('hidden'));
+        if(selectionVisible && now - _loadAnimState.lastAt >= _loadAnimState.stepMs){
             _loadAnimState.noneFrame = _loadAnimState.noneFrame >= LOAD_NONE_ANIM_FRAMES[1] ? LOAD_NONE_ANIM_FRAMES[0] : _loadAnimState.noneFrame + 1;
             document.querySelectorAll('.load-slot-card.empty img').forEach(img => { img.src = loadFrameSrc('none', _loadAnimState.noneFrame); });
             const selected = document.querySelector('.load-slot-card.selected.filled');
@@ -2309,6 +2316,9 @@ function loadGame() {
         { let b1 = document.getElementById('btn-revive'); if(b1) b1.classList.add('hidden');
           let b2 = document.getElementById('btn-revive-inplace'); if(b2) b2.classList.add('hidden'); }
         document.getElementById('creation-screen').classList.add('hidden');
+        // 父層隱藏已足以遮住畫面，但同步隱藏子面板可讓其動畫／其他查詢直接判定為停用。
+        const loadPanel = document.getElementById('load-select-panel');
+        if(loadPanel) loadPanel.classList.add('hidden');
         document.getElementById('game-screen').classList.remove('hidden');
         document.body.classList.add('game-bg-dim');   // 正式遊戲後：背景淡化
         

@@ -395,8 +395,10 @@
                     else window.addEventListener('load', beginPreload, { once: true });
                     function animateLogin(now) {
                         var screen = document.getElementById('creation-screen');
+                        var mainMenu = document.getElementById('main-menu');
                         var img = document.getElementById('login-anim-image');
-                        if (ready && img && screen && !screen.classList.contains('hidden') && now - lastAt >= stepMs) {
+                        // 選角／創角面板共用 creation-screen；只有首頁主選單顯示時才更新登入頁動畫。
+                        if (ready && img && screen && !screen.classList.contains('hidden') && mainMenu && !mainMenu.classList.contains('hidden') && now - lastAt >= stepMs) {
                             frame = frame >= last ? first : frame + 1;
                             img.src = base + frame + '.png';
                             lastAt = now;
@@ -1708,7 +1710,7 @@
         </script>
 
         <script src="js/anim-manifest.js?v=v3.8.12-necro-relics"></script>
-        <script src="js/00-data.js?v=v3.8.56-google-drive-auto-silent"></script>
+        <script src="js/00-data.js?v=v3.8.58-login-anim"></script>
         <script src="js/01-drops-config.js?v=v3.8.55"></script>
         <script src="js/02-stats-recompute.js?v=v3.8.26-flywing-relics"></script>
         <script src="js/03-combat-core.js?v=v3.8.26-flywing-relics"></script>
@@ -1721,7 +1723,7 @@
         <script src="js/10-ui-tabs.js?v=v3.8.14-merc-guild"></script>
         <script src="js/11-world-map.js?v=v3.8.17-item-stack-source"></script>
         <script src="js/12-npc-quests.js?v=v3.8.54-quest-ownership-fix"></script>
-        <script src="js/13-shop-save.js?v=v3.8.49-stat-cap"></script>
+        <script src="js/13-shop-save.js?v=v3.8.57-load-anim"></script>
         <script src="js/14-craft-pandora.js?v=v3.8.53-evo-fruit-scale-cost"></script>
         <script src="js/15-cards.js?v=v3.7.66"></script>
         <script src="js/16-equip-book.js?v=v3.8.15-legacy-import-smooth"></script>
