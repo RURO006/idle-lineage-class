@@ -19,6 +19,7 @@
         <link rel="stylesheet" href="css/floating-ui.css?v=v3.5.100-audit-tail" />
         <link rel="stylesheet" href="css/tailwind-built.css" />
         <!-- 🔧 預編譯 Tailwind（取代執行期 JIT tailwind.js）：只含實際用到的 class，省 407KB runtime + 移除持續掃描 DOM 的成本。置於 style.css 之後以保留原 cascade（utility 平手時勝過自訂 class，與舊 JIT 注入順序一致） -->
+        <script src="js/34-cache-img.js?v=v3.8.59-cache-img"></script>
     </head>
     <body class="h-screen w-screen overflow-hidden">
         <!-- 🖥️ v2.5.8 流動式版面：#app-stage 由 CSS position:fixed;inset:0 填滿整個視窗，內層三欄 flex 隨視窗大小自然撐開（無固定 1920×1080、無 transform 縮放、無 letterbox）。VFX/提示/游標光點掛在 body（舞台外）→ getBoundingClientRect 取真實視窗座標、天生相容。 -->
@@ -380,15 +381,15 @@
                             ready = true;
                             return;
                         }
-                        var p = new Image();
-                        p.onload = p.onerror = function () {
+                        var p = PreloadCachedImage(base + n + '.png');
+                        p.ready.then(function () {
                             preloadFrame(n + 1);
-                        };
-                        p.src = base + n + '.png';
+                        });
                     }
                     function beginPreload() {
                         setTimeout(function () {
-                            preloadFrame(first + 1);
+                            // 首幀雖已由 HTML 顯示，也要放進 GetCacheUrl，否則循環回到 273 時會第一次才建立快取。
+                            preloadFrame(first);
                         }, 500);
                     }
                     if (document.readyState === 'complete') beginPreload();
@@ -400,7 +401,7 @@
                         // 選角／創角面板共用 creation-screen；只有首頁主選單顯示時才更新登入頁動畫。
                         if (ready && img && screen && !screen.classList.contains('hidden') && mainMenu && !mainMenu.classList.contains('hidden') && now - lastAt >= stepMs) {
                             frame = frame >= last ? first : frame + 1;
-                            img.src = base + frame + '.png';
+                            SetCachedImageSrc(img, base + frame + '.png');
                             lastAt = now;
                         }
                         requestAnimationFrame(animateLogin);
@@ -1710,7 +1711,7 @@
         </script>
 
         <script src="js/anim-manifest.js?v=v3.8.12-necro-relics"></script>
-        <script src="js/00-data.js?v=v3.8.58-login-anim"></script>
+        <script src="js/00-data.js?v=v3.8.59-cache-img"></script>
         <script src="js/01-drops-config.js?v=v3.8.55"></script>
         <script src="js/02-stats-recompute.js?v=v3.8.26-flywing-relics"></script>
         <script src="js/03-combat-core.js?v=v3.8.26-flywing-relics"></script>
@@ -1719,13 +1720,13 @@
         <script src="js/06-status-allies.js?v=v3.8.54-quest-ownership-fix"></script>
         <script src="js/07-skills-cast.js?v=v3.8.26-flywing-relics"></script>
         <script src="js/08-items-equip.js?v=v3.8.16-wis-regen-interval"></script>
-        <script src="js/09-vfx-render.js?v=v3.8.32-merc-vfx-origin"></script>
+        <script src="js/09-vfx-render.js?v=v3.8.59-cache-img"></script>
         <script src="js/10-ui-tabs.js?v=v3.8.14-merc-guild"></script>
-        <script src="js/11-world-map.js?v=v3.8.17-item-stack-source"></script>
+        <script src="js/11-world-map.js?v=v3.8.59-cache-img"></script>
         <script src="js/12-npc-quests.js?v=v3.8.54-quest-ownership-fix"></script>
-        <script src="js/13-shop-save.js?v=v3.8.57-load-anim"></script>
+        <script src="js/13-shop-save.js?v=v3.8.59-cache-img"></script>
         <script src="js/14-craft-pandora.js?v=v3.8.53-evo-fruit-scale-cost"></script>
-        <script src="js/15-cards.js?v=v3.7.66"></script>
+        <script src="js/15-cards.js?v=v3.8.59-cache-img"></script>
         <script src="js/16-equip-book.js?v=v3.8.15-legacy-import-smooth"></script>
         <script src="js/18-misc-book.js?v=v3.8.15-legacy-import-smooth"></script>
         <script src="js/17-audio.js?v=v3.8.1-monia-sfx"></script>
@@ -1733,13 +1734,13 @@
         <script src="js/20-warehouse-window.js?v=v3.5.100-audit-tail"></script>
         <script src="js/21-relic-book.js?v=v3.8.15-legacy-import-smooth"></script>
         <script src="js/23-summons.js?v=v3.8.23-sherine-set-rework"></script>
-        <script src="js/22-pets.js?v=v3.8.52"></script>
-        <script src="js/24-pandora-relic-market.js?v=v3.8.37-all-progress-menu"></script>
+        <script src="js/22-pets.js?v=v3.8.59-cache-img"></script>
+        <script src="js/24-pandora-relic-market.js?v=v3.8.59-cache-img"></script>
         <script src="js/25-clan-system.js?v=v3.8.7-social-private"></script>
         <script src="js/26-world-channel.js?v=v3.8.48-pet-cp-chat"></script>
         <script src="js/28-pvp-arena.js?v=v3.7.89-stage33-host-sign"></script>
         <script src="js/29-siege-v2-data.js?v=v3.7.63-siege-v2"></script>
-        <script src="js/30-siege-v2.js?v=v3.7.89-castle-ring-layout"></script>
+        <script src="js/30-siege-v2.js?v=v3.8.59-cache-img"></script>
         <script src="js/31-castle-guards.js?v=v3.8.23-sherine-set-rework"></script>
         <script src="js/32-threat.js?v=v3.8.23-sherine-set-rework"></script>
         <script src="js/google-drive-config.js?v=v3.8.51-google-drive-sync"></script>

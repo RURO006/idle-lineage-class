@@ -1903,7 +1903,7 @@ let _npcFrameCache = {};
 function _npcFrames(key) {
     if (_npcFrameCache[key]) return _npcFrameCache[key];
     let cat = NPC_SPR[key], arr = [];
-    if (cat) for (let i = 0; i < cat.f; i++) { let im = new Image(); im.src = 'assets/npc/' + cat.g + '/idle_' + i + '.png'; arr.push(im); }
+    if (cat) for (let i = 0; i < cat.f; i++) arr.push(PreloadCachedImage('assets/npc/' + cat.g + '/idle_' + i + '.png'));
     _npcFrameCache[key] = arr;
     return arr;
 }
@@ -1911,7 +1911,7 @@ let _npcWeaponFrameCache = {};
 function _npcWeaponFrames(key) {   // 🔥 火焰/武器疊層幀(idle_w_N)：僅 NPC_SPR 有 w 的（如宙斯之熔岩高崙）·與本體同幀數同步
     if (_npcWeaponFrameCache[key]) return _npcWeaponFrameCache[key];
     let cat = NPC_SPR[key], arr = [];
-    if (cat && cat.w) for (let i = 0; i < cat.w; i++) { let im = new Image(); im.src = 'assets/npc/' + cat.g + '/idle_w_' + i + '.png'; arr.push(im); }
+    if (cat && cat.w) for (let i = 0; i < cat.w; i++) arr.push(PreloadCachedImage('assets/npc/' + cat.g + '/idle_w_' + i + '.png'));
     _npcWeaponFrameCache[key] = arr;
     return arr;
 }
@@ -2109,7 +2109,7 @@ function _townCastleCrownHtml(npc) {
     let royalNpc = npc.id === 'npc_esti' || npc.id === 'npc_tros';
     let royalPlayer = !!npc._wanderer && (npc.avatar === '王子' || npc.avatar === '公主');
     return (royalNpc || royalPlayer)
-        ? '<img class="tn-castle-crown" src="assets/ui/castle-crown.gif?v=v3.6.22" alt="" aria-hidden="true" draggable="false">'
+        ? '<img class="tn-castle-crown" data-cache-src="assets/ui/castle-crown.gif?v=v3.6.22" alt="" aria-hidden="true" draggable="false">'
         : '';
 }
 // 👑 v3.6.76 城鎮 NPC 王冠錨點（tools/crown-anchor-gen.js 離線掃 idle 幀產出·勿手改）。
@@ -2205,8 +2205,8 @@ function renderTownNPCMap(townId) {
         // 玩家 NPC 使用 classanim 的無武器 idle（三方向隨機·由 wanderingBuyerSpriteData 依 id 決定），本體與影子各自同步播放。
         if (npc._wanderer && typeof wanderingBuyerSpriteData === 'function') {
             let spr = wanderingBuyerSpriteData(npc);
-            let body0 = spr.frames && spr.frames[0] ? spr.frames[0].src : '';
-            let shadow0 = spr.shadows && spr.shadows[0] ? spr.shadows[0].src : '';
+            let body0 = spr.frames && spr.frames[0] ? GetCachedImageSource(spr.frames[0]) : '';
+            let shadow0 = spr.shadows && spr.shadows[0] ? GetCachedImageSource(spr.shadows[0]) : '';
             let el = document.createElement('div');
             el.className = 'town-npc wandering-player';
             el.style.left = p.x + '%'; el.style.top = p.y + '%'; el.style.zIndex = Math.round(p.y * 10);
@@ -2217,8 +2217,8 @@ function renderTownNPCMap(townId) {
             el.innerHTML =
                 '<div class="tn-label">' + nameHtml + '<span class="tn-title">[' + (npc.title || '玩家收購') + ']</span></div>' +
                 crownHtml +
-                '<img class="tn-shadow" src="' + shadow0 + '" alt="" onload="this.parentElement.classList.add(\'has-tn-shadow\')" onerror="this.remove()">' +
-                '<img class="tn-body" src="' + body0 + '" alt="">';
+                '<img class="tn-shadow" data-cache-src="' + shadow0 + '" alt="" onload="this.parentElement.classList.add(\'has-tn-shadow\')" onerror="this.remove()">' +
+                '<img class="tn-body" data-cache-src="' + body0 + '" alt="">';
             el.onclick = () => openWanderingBuyerDialog(npc.id);
             map.appendChild(el);
             let bodyImg = el.querySelector('.tn-body');
@@ -2227,6 +2227,7 @@ function renderTownNPCMap(townId) {
             if (crownImg) bodyImg.addEventListener('load', () => _townCastleCrownAlign(crownImg, bodyImg));
             if (crownImg) setTimeout(() => _townCastleCrownAlign(crownImg, bodyImg), 0);
             bodyImg.addEventListener('load', _scheduleTownLabelResolve, { once: true });
+            CacheImageTree(el);
             _townNpcSprites.push({
                 img: bodyImg,
                 crown: crownImg,
@@ -2248,9 +2249,9 @@ function renderTownNPCMap(townId) {
         el.innerHTML =
             '<div class="tn-label"><span class="tn-name">' + npc.n + '</span><span class="tn-title">' + npc.title + '</span></div>' +
             crownHtml +
-            '<img class="tn-shadow" src="assets/npc/' + cat.g + '/idle_s_0.png" alt="" onload="this.parentElement.classList.add(\'has-tn-shadow\')" onerror="this.remove()">' +   // 🌑 v3.3.5 真實影子 sprite(body gfx+1·共畫布疊本體對齊)；有影子→onload 標記父層隱藏後備橢圓；無影子(職業動畫/老 gfx/告示)→404 remove→改用 CSS 橢圓後備影子(v3.3.18)
-            '<img class="tn-body"' + (cat.tint ? (' style="filter:' + cat.tint + '"') : '') + ' src="assets/npc/' + cat.g + '/idle_0.png" alt="">' +
-            (cat.w ? '<img class="tn-weapon" src="assets/npc/' + cat.g + '/idle_w_0.png" alt="" onerror="this.remove()">' : '');   // 🔥 v3.3.18 火焰/武器疊層(screen 混合·宙斯之熔岩高崙的燃燒特效)
+            '<img class="tn-shadow" data-cache-src="assets/npc/' + cat.g + '/idle_s_0.png" alt="" onload="this.parentElement.classList.add(\'has-tn-shadow\')" onerror="this.remove()">' +   // 🌑 v3.3.5 真實影子 sprite(body gfx+1·共畫布疊本體對齊)；有影子→onload 標記父層隱藏後備橢圓；無影子(職業動畫/老 gfx/告示)→404 remove→改用 CSS 橢圓後備影子(v3.3.18)
+            '<img class="tn-body"' + (cat.tint ? (' style="filter:' + cat.tint + '"') : '') + ' data-cache-src="assets/npc/' + cat.g + '/idle_0.png" alt="">' +
+            (cat.w ? '<img class="tn-weapon" data-cache-src="assets/npc/' + cat.g + '/idle_w_0.png" alt="" onerror="this.remove()">' : '');   // 🔥 v3.3.18 火焰/武器疊層(screen 混合·宙斯之熔岩高崙的燃燒特效)
         if (npc._float === 'pride') el.onclick = () => openTownFloatWindow('傲慢之塔', '排名挑戰', renderPrideEntrance);
         else if (npc._float === 'rift') el.onclick = () => openTownFloatWindow('時空裂痕', '進入', renderRiftEntrance);
         else el.onclick = () => interactNPC(npc.id, townId);
@@ -2260,6 +2261,7 @@ function renderTownNPCMap(townId) {
         if (crownImg) bodyImg.addEventListener('load', () => _townCastleCrownAlign(crownImg, bodyImg));
         if (crownImg) setTimeout(() => _townCastleCrownAlign(crownImg, bodyImg), 0);
         bodyImg.addEventListener('load', _scheduleTownLabelResolve, { once: true });   // 🏷️ 圖片載入拿到真實高度後再排名牌
+        CacheImageTree(el);
         let wImg = cat.w ? el.querySelector('.tn-weapon') : null;   // 🔥 火焰疊層與本體同步推進
         _townNpcSprites.push({ img: bodyImg, crown: crownImg, wimg: wImg, wframes: (cat.w ? _npcWeaponFrames(key) : null), frames: _npcFrames(key), phase: (i * 3) % 8, last: -1 });
     });
@@ -2338,9 +2340,9 @@ function _townNpcAnimTick() {
         let fi = (Math.floor(t / 125) + s.phase) % s.frames.length;
         if (fi !== s.last) {
             s.last = fi;
-            let fr = s.frames[fi]; if (fr && fr.src) s.img.src = fr.src;
+            let fr = s.frames[fi]; if (fr) SetCachedImageSrc(s.img, GetCachedImageSource(fr));
             if (s.crown) _townCastleCrownAlign(s.crown, s.img);
-            if (s.wimg && s.wframes && s.wframes.length) { let wf = s.wframes[fi % s.wframes.length]; if (wf && wf.src) s.wimg.src = wf.src; }   // 🔥 火焰疊層同幀
+            if (s.wimg && s.wframes && s.wframes.length) { let wf = s.wframes[fi % s.wframes.length]; if (wf) SetCachedImageSrc(s.wimg, GetCachedImageSource(wf)); }   // 🔥 火焰疊層同幀
         }
     }
 }

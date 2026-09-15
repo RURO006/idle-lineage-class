@@ -641,14 +641,14 @@
                 cfg = p.actions.idle; elapsed = 0;
             }
             let frame = cfg.start + (cfg.loop ? elapsed % cfg.count : Math.min(cfg.count - 1, elapsed));
-            body.src = `${p.base}/${frameName(cfg, 'body', frame)}`;
+            SetCachedImageSrc(body, `${p.base}/${frameName(cfg, 'body', frame)}`);
             if (p.shadow) {
                 let shadow = ensureLayer(inner, 'siege-v2-shadow', body);
-                shadow.src = `${p.base}/${frameName(cfg, 'shadow', frame)}`;
+                SetCachedImageSrc(shadow, `${p.base}/${frameName(cfg, 'shadow', frame)}`);
             }
             if (p.rightBase) {
                 let right = ensureLayer(inner, 'siege-v2-right');
-                right.src = `${p.rightBase}/${frameName(cfg, 'body', frame)}`;
+                SetCachedImageSrc(right, `${p.rightBase}/${frameName(cfg, 'body', frame)}`);
             }
         });
     }
@@ -662,7 +662,7 @@
         let r = body.getBoundingClientRect(), ghost = document.createElement('img');
         ghost.className = 'vfx-ghost siege-v2-death'; ghost.style.left = (r.left + r.width / 2) + 'px'; ghost.style.top = (r.top + r.height / 2) + 'px'; ghost.style.width = r.width + 'px'; ghost.style.height = r.height + 'px';
         layer.appendChild(ghost);
-        let i = 0, draw = () => { ghost.src = `${p.base}/${frameName(cfg, 'body', cfg.start + i)}`; };
+        let i = 0, draw = () => { SetCachedImageSrc(ghost, `${p.base}/${frameName(cfg, 'body', cfg.start + i)}`); };
         draw();
         let iv = setInterval(() => { i++; if (i >= cfg.count || !ghost.isConnected) { clearInterval(iv); ghost.remove(); return; } draw(); }, 1000 / p.fps);
         setTimeout(() => { clearInterval(iv); if (ghost.isConnected) ghost.remove(); }, cfg.count * (1000 / p.fps) + 1500);

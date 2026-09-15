@@ -115,7 +115,7 @@ function _preloadFxFrames(dir, prefix, n) {
     let key = dir + '/' + prefix;
     if (_spellFxCache[key]) return _spellFxCache[key];
     let arr = [];
-    for (let i = 0; i < n; i++) { let im = new Image(); im.src = 'assets/fx/' + encodeURIComponent(dir) + '/' + prefix + '_' + i + '.png'; arr.push(im); }
+    for (let i = 0; i < n; i++) { arr.push(PreloadCachedImage('assets/fx/' + encodeURIComponent(dir) + '/' + prefix + '_' + i + '.png')); }
     _spellFxCache[key] = arr;
     return arr;
 }
@@ -139,7 +139,7 @@ let _deathGhostCount = 0;
 function _preloadDeathFx(name, n) {
     if (_deathFxCache[name]) return _deathFxCache[name];
     let arr = [];
-    for (let i = 0; i < n; i++) { let im = new Image(); im.src = 'assets/anim/' + encodeURIComponent(name) + '/death_effect_' + i + '.png'; arr.push(im); }
+    for (let i = 0; i < n; i++) { arr.push(PreloadCachedImage('assets/anim/' + encodeURIComponent(name) + '/death_effect_' + i + '.png')); }
     _deathFxCache[name] = arr;
     return arr;
 }
@@ -210,7 +210,7 @@ function playSpellFx(skn, mob, caster) {
             let el = document.createElement('img');
             el.className = 'vfx-spell' + (extraCls ? ' ' + extraCls : '');
             el.dataset.fxkey = fxKey;
-            el.src = src;
+            SetCachedImageSrc(el, GetCachedImageSource(src));
             el.style.width = fxW + 'px'; el.style.height = fxH + 'px'; el.style.left = left; el.style.top = top;
             if (blend) el.style.mixBlendMode = blend;
             layer.appendChild(el);
@@ -226,7 +226,7 @@ function playSpellFx(skn, mob, caster) {
             let ox = pr ? (pr.left + pr.width * 0.5) : (br ? (br.left + br.width * 0.5) : ax);                       // 施法者水平＝變身 sprite 中央·退回戰鬥區中央
             let oy = pr ? (pr.top + pr.height * 0.35) : (br ? (br.top + br.height * 0.98) : (ay + (fxH || 40) * 3));  // 施法者垂直＝sprite 胸口·退回戰鬥區底部(玩家視角)
             let axf = (cfg.ax != null ? cfg.ax : 0.5), ayf = (cfg.ay != null ? cfg.ay : 0.5);   // 投射物錨點(哪一點沿路徑走)
-            let el = mkImg(first.src, null, cfg.blend);
+            let el = mkImg(first, null, cfg.blend);
             if (_flipX) el.style.transform = 'scaleX(-1)';   // 🎯 4向左側：水平鏡射（NW←NE鏡射·W←E鏡射）
             el.style.left = (ox - fxW * axf) + 'px'; el.style.top = (oy - fxH * ayf) + 'px';   // 立即置於起點(避免首幀閃在終點)
             _spellFxActive[fxKey] = true;
@@ -242,7 +242,7 @@ function playSpellFx(skn, mob, caster) {
                     let px = ox + (ax - ox) * t, py = oy + (ay - oy) * t;
                     el.style.width = fxW + 'px'; el.style.height = fxH + 'px';
                     el.style.left = (px - fxW * axf) + 'px'; el.style.top = (py - fxH * ayf) + 'px';
-                    let fi = Math.floor(elapsed / frameDur) % cfg.n; if (frames[fi]) el.src = frames[fi].src;   // 途中循環幀
+                    let fi = Math.floor(elapsed / frameDur) % cfg.n; if (frames[fi]) SetCachedImageSrc(el, GetCachedImageSource(frames[fi]));   // 途中循環幀
                     if (t < 1) requestAnimationFrame(raf);
                     else { el.remove(); delete _spellFxActive[fxKey]; }
                 } catch (e) { try { el.remove(); } catch (_) {} delete _spellFxActive[fxKey]; }
@@ -250,20 +250,20 @@ function playSpellFx(skn, mob, caster) {
             requestAnimationFrame(raf);
             return;
         }
-        let sEl = shadowFrames ? mkImg(shadowFrames[0].src, 'vfx-spell-shadow', null) : null;   // 🌑 影子層先加(在後·DOM 順序→特效層疊其上)
-        let el = mkImg(first.src, null, cfg.blend);   // 特效層
+        let sEl = shadowFrames ? mkImg(shadowFrames[0], 'vfx-spell-shadow', null) : null;   // 🌑 影子層先加(在後·DOM 順序→特效層疊其上)
+        let el = mkImg(first, null, cfg.blend);   // 特效層
         if (_flipX) { el.style.transform = 'scaleX(-1)'; if (sEl) sEl.style.transform = 'scaleX(-1)'; }   // 🎯 v3.7.43 非投射的方向型也支援 4 向左側鏡射（8 向恆 flip=false→此行不作用）
         // 🎇 v2.7.41 多層同步(cfg.layers=額外前綴陣列·同畫布同幾何同幀·如究極光裂術/震裂術 3 spr 同時播)：每層一個 img·全部同 fxW/fxH/left/top/blend·interval 同步推進
         let extraLayers = [];
-        if (cfg.layers) for (let lp of cfg.layers) { let lf = _preloadFxFrames(cfg.dir, lp, cfg.n); extraLayers.push({ el: mkImg(lf[0].src, null, cfg.blend), frames: lf }); }
+        if (cfg.layers) for (let lp of cfg.layers) { let lf = _preloadFxFrames(cfg.dir, lp, cfg.n); extraLayers.push({ el: mkImg(lf[0], null, cfg.blend), frames: lf }); }
         _spellFxActive[fxKey] = true;
         let i = 0, iv = setInterval(() => {
             i++;
             if (i >= cfg.n) { clearInterval(iv); el.remove(); if (sEl) sEl.remove(); extraLayers.forEach(L => L.el.remove()); delete _spellFxActive[fxKey]; return; }
             if (_arFallback && first.naturalWidth && first.naturalHeight) { _arFallback = false; ar = first.naturalWidth / first.naturalHeight; _computeGeom(); _applyGeom(el); if (sEl) _applyGeom(sEl); extraLayers.forEach(L => _applyGeom(L.el)); }   // 🩹 解碼後重算幾何一次(僅首播命中)
-            el.src = frames[i].src;
-            if (sEl && shadowFrames[i]) sEl.src = shadowFrames[i].src;
-            extraLayers.forEach(L => { if (L.frames[i]) L.el.src = L.frames[i].src; });
+            SetCachedImageSrc(el, GetCachedImageSource(frames[i]));
+            if (sEl && shadowFrames[i]) SetCachedImageSrc(sEl, GetCachedImageSource(shadowFrames[i]));
+            extraLayers.forEach(L => { if (L.frames[i]) SetCachedImageSrc(L.el, GetCachedImageSource(L.frames[i])); });
         }, Math.round(1000 / (cfg.fps || 14)));
     } catch (e) {}
 }
@@ -383,7 +383,7 @@ function playSelfFx(skn, anchorRect) {   // 🩹 v3.0.95 第2參 anchorRect（�
         _geom();
         let el = document.createElement('img');
         el.className = 'vfx-spell vfx-selffx';
-        el.src = first.src;
+        SetCachedImageSrc(el, GetCachedImageSource(first));
         el.style.width = fxW + 'px'; el.style.height = fxH + 'px'; el.style.left = left; el.style.top = top;
         if (cfg.blend) el.style.mixBlendMode = cfg.blend;
         layer.appendChild(el);
@@ -392,7 +392,7 @@ function playSelfFx(skn, anchorRect) {   // 🩹 v3.0.95 第2參 anchorRect（�
             i++;
             if (i >= cfg.n) { clearInterval(iv); el.remove(); delete _selfFxActive[_fxKey]; return; }
             if (_arFallback && first.naturalWidth && first.naturalHeight) { _arFallback = false; ar = first.naturalWidth / first.naturalHeight; _geom(); el.style.width = fxW + 'px'; el.style.height = fxH + 'px'; el.style.left = left; el.style.top = top; }
-            el.src = frames[i].src;
+            SetCachedImageSrc(el, GetCachedImageSource(frames[i]));
         }, Math.round(1000 / (cfg.fps || 14)));
     } catch (e) {}
 }
@@ -450,7 +450,7 @@ function _updateFreezeFx() {
                 _freezePosition(fx.el, r);
                 let frames = _preloadFxFrames(FREEZE_FX.dir, 'state', FREEZE_FX.stateN);
                 let f = Math.floor(Date.now() / (1000 / FREEZE_FX.fps)) % FREEZE_FX.stateN;
-                if (frames[f]) fx.el.src = frames[f].src;
+                if (frames[f]) SetCachedImageSrc(fx.el, GetCachedImageSource(frames[f]));
             } else if (fx && fx.mode === 'state') {
                 fx.mode = 'end'; fx.t0 = Date.now();   // 解凍/陣亡→切碎裂動畫(位置定格在最後一次錨定·怪離場也能播完)
             }
@@ -462,7 +462,7 @@ function _updateFreezeFx() {
                 let frames = _preloadFxFrames(FREEZE_FX.dir, 'end', FREEZE_FX.endN);
                 let f = Math.floor((Date.now() - fx.t0) / (1000 / FREEZE_FX.fps));
                 if (f >= FREEZE_FX.endN) { fx.el.remove(); delete _freezeFx[uid]; }
-                else if (frames[f]) fx.el.src = frames[f].src;
+                else if (frames[f]) SetCachedImageSrc(fx.el, GetCachedImageSource(frames[f]));
             } else if (!byUid[uid]) { fx.el.remove(); delete _freezeFx[uid]; }   // state 中但怪突然消失(未經解凍)→清
         }
     } catch (e) {}
@@ -508,18 +508,18 @@ function _updateMobSkillFx() {
                         let _sx = _br.width / cfg.anchored.bw, _sy = _br.height / cfg.anchored.bh;
                         s.el.style.width = ((f0.naturalWidth || 1) * _sx) + 'px'; s.el.style.height = ((f0.naturalHeight || 1) * _sy) + 'px';
                         s.el.style.left = (_br.left + cfg.anchored.ox * _sx) + 'px'; s.el.style.top = (_br.top + cfg.anchored.oy * _sy) + 'px';
-                        if (seq[fi]) s.el.src = seq[fi].src;
+                        if (seq[fi]) SetCachedImageSrc(s.el, GetCachedImageSource(seq[fi]));
                         if (s.el2 && a.skillFx.start2) {   // 🔥 v2.7.41 第二特效層(不死鳥 skill_effect2)：與 start 同畫布(--multi)→同幾何同錨定·同步幀
                             s.el2.style.width = s.el.style.width; s.el2.style.height = s.el.style.height;
                             s.el2.style.left = s.el.style.left; s.el2.style.top = s.el.style.top;
                             let _fi2 = fi < a.skillFx.start2.length ? fi : a.skillFx.start2.length - 1;
-                            if (a.skillFx.start2[_fi2]) s.el2.src = a.skillFx.start2[_fi2].src;
+                            if (a.skillFx.start2[_fi2]) SetCachedImageSrc(s.el2, GetCachedImageSource(a.skillFx.start2[_fi2]));
                         }
                         if (s.el3 && a.skillFx.start3) {   // 🔥 v3.0.13 第三特效層：同幾何·同步幀(超長定格尾幀)
                             s.el3.style.width = s.el.style.width; s.el3.style.height = s.el.style.height;
                             s.el3.style.left = s.el.style.left; s.el3.style.top = s.el.style.top;
                             let _fi3 = fi < a.skillFx.start3.length ? fi : a.skillFx.start3.length - 1;
-                            if (a.skillFx.start3[_fi3]) s.el3.src = a.skillFx.start3[_fi3].src;
+                            if (a.skillFx.start3[_fi3]) SetCachedImageSrc(s.el3, GetCachedImageSource(a.skillFx.start3[_fi3]));
                         }
                     }
                 }
@@ -536,7 +536,7 @@ function _updateMobSkillFx() {
             let ay = (cfg.ay != null) ? cfg.ay : 0.55;
             s.el.style.width = fxW + 'px'; s.el.style.height = fxH + 'px';
             s.el.style.left = (cx - fxW * 0.5) + 'px'; s.el.style.top = (cy - fxH * ay) + 'px';
-            if (seq[fi]) s.el.src = seq[fi].src;
+            if (seq[fi]) SetCachedImageSrc(s.el, GetCachedImageSource(seq[fi]));
         }
     } catch (e) {}
 }
@@ -713,7 +713,7 @@ function vfxKill(mob) {
                 let _img = box.querySelector('img:not(.mob-anim-shadow):not(.mob-anim-weapon):not(.mob-anim-weapon2)');
                 if (_deathSeq && _img && _img.src && _img.naturalWidth !== 0) {   // 🚫 v2.7.49 只在有死亡序列幀(anim)時播殘影；移除靜態怪的 CSS 白閃殘影
                     let gh = document.createElement('img');
-                    gh.className = 'vfx-ghost'; gh.src = _img.src;
+                    gh.className = 'vfx-ghost'; SetCachedImageSrc(gh, GetCachedImageSource(_img));
                     // 🎯 v3.1.67 殘影尺寸/位置錨到「本體 img 實際 rect」而非 .mob-img-inner 方框：max-height 讓動畫怪 img 溢出方框(如哈維 185px img vs 112px 帶高)時，用方框尺寸會把死亡殘影 object-fit:contain 縮回帶高＝死亡瞬間變小。改用 img rect→殘影與生前本體同尺寸同位。方框為 0/未載入時退回原方框值。
                     let _ir = _img.getBoundingClientRect();
                     let _grx = _ir.width > 0 ? (_ir.left + _ir.width / 2) : bcx, _gry = _ir.width > 0 ? (_ir.top + _ir.height / 2) : bcy;
@@ -726,14 +726,14 @@ function vfxKill(mob) {
                         _deathGhostCount++;   // 🎬 v3.4.43 專屬節流：生殘影 +1；淡出結束/保險回收擇一 _release() 保證只減一次
                         let _dghReleased = false;
                         let _release = () => { if (_dghReleased) return; _dghReleased = true; _deathGhostCount = Math.max(0, _deathGhostCount - 1); };
-                        gh.src = _deathSeq[0].src;
+                        SetCachedImageSrc(gh, GetCachedImageSource(_deathSeq[0]));
                         // ⚔️ v2.7.44 死亡殘影武器層(death_w/death_w2·screen 疊上)：與 body death 同鐘逐幀(--multi 共畫布同幾何)·如爆彈花爆炸(僅 death_w)/龍死亡火焰。嚴格 1:1(本幀無 _w 幀→不換 src)。
                         let _ghW = [];
                         for (let _wk of ['weapon', 'weapon2']) {
                             let _wd = _da[_wk] && _da[_wk].death;
                             if (_wd && _wd.length && _wd[0]) {
                                 let g2 = document.createElement('img');
-                                g2.className = 'vfx-ghost'; g2.src = _wd[0].src;
+                                g2.className = 'vfx-ghost'; SetCachedImageSrc(g2, GetCachedImageSource(_wd[0]));
                                 g2.style.left = gh.style.left; g2.style.top = gh.style.top;
                                 g2.style.width = gh.style.width; g2.style.height = gh.style.height;
                                 g2.style.transformOrigin = gh.style.transformOrigin;
@@ -744,7 +744,7 @@ function vfxKill(mob) {
                         }
                         let _fi = 0, _fint = setInterval(() => {
                             _fi++;
-                            if (_fi < _deathSeq.length) { gh.src = _deathSeq[_fi].src; _ghW.forEach(W => { if (W.seq[_fi]) W.el.src = W.seq[_fi].src; }); }
+                            if (_fi < _deathSeq.length) { SetCachedImageSrc(gh, GetCachedImageSource(_deathSeq[_fi])); _ghW.forEach(W => { if (W.seq[_fi]) SetCachedImageSrc(W.el, GetCachedImageSource(W.seq[_fi])); }); }
                             else { clearInterval(_fint); try { gh.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, easing: 'ease-out' }).onfinish = () => { gh.remove(); _release(); }; } catch (e) { gh.remove(); _release(); } _ghW.forEach(W => { try { W.el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, easing: 'ease-out' }).onfinish = () => W.el.remove(); } catch (e) { W.el.remove(); } }); }
                         }, 1000 / MOB_ANIM_FPS);
                         setTimeout(() => { try { clearInterval(_fint); if (gh.isConnected) gh.remove(); _ghW.forEach(W => { if (W.el.isConnected) W.el.remove(); }); } catch (e) {} _release(); }, _deathSeq.length * (1000 / MOB_ANIM_FPS) + 2000);   // 保險回收
@@ -754,7 +754,7 @@ function vfxKill(mob) {
                     //   改用「最後一格可見幀淡出」(~0.4s·無白閃·不違反 v2.7.49 移除靜態白閃的決策——非名單靜態怪照舊)。計入 _deathGhostCount 同一節流。
                     _deathGhostCount++;
                     let _fgDone = false; let _fgRelease = () => { if (_fgDone) return; _fgDone = true; _deathGhostCount = Math.max(0, _deathGhostCount - 1); };
-                    let gh2 = document.createElement('img'); gh2.className = 'vfx-ghost'; gh2.src = _img.src;
+                    let gh2 = document.createElement('img'); gh2.className = 'vfx-ghost'; SetCachedImageSrc(gh2, GetCachedImageSource(_img));
                     let _ir2 = _img.getBoundingClientRect();
                     gh2.style.left = (_ir2.width > 0 ? (_ir2.left + _ir2.width / 2) : bcx) + 'px'; gh2.style.top = (_ir2.width > 0 ? (_ir2.top + _ir2.height / 2) : bcy) + 'px';
                     gh2.style.width = (_ir2.width > 0 ? _ir2.width : r.width) + 'px'; gh2.style.height = (_ir2.width > 0 ? _ir2.height : r.height) + 'px';
@@ -770,13 +770,13 @@ function vfxKill(mob) {
                     let _dfF = _preloadDeathFx(mob.n, _dfCfg.n);
                     let _dsx = r.width / _dfCfg.anchored.bw, _dsy = r.height / _dfCfg.anchored.bh;
                     let de = document.createElement('img'); de.className = 'vfx-spell'; de.style.mixBlendMode = 'screen';
-                    de.src = _dfF[0].src;
+                    SetCachedImageSrc(de, GetCachedImageSource(_dfF[0]));
                     de.style.width = (_dfCfg.ew * _dsx) + 'px'; de.style.height = (_dfCfg.eh * _dsy) + 'px';
                     de.style.left = (r.left + _dfCfg.anchored.ox * _dsx) + 'px'; de.style.top = (r.top + _dfCfg.anchored.oy * _dsy) + 'px';
                     layer.appendChild(de);
                     let _dfi = 0, _dfint = setInterval(() => {
                         _dfi++;
-                        if (_dfi < _dfCfg.n) { if (_dfF[_dfi]) de.src = _dfF[_dfi].src; }
+                        if (_dfi < _dfCfg.n) { if (_dfF[_dfi]) SetCachedImageSrc(de, GetCachedImageSource(_dfF[_dfi])); }
                         else { clearInterval(_dfint); try { de.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 280, easing: 'ease-out' }).onfinish = () => de.remove(); } catch (e) { de.remove(); } }
                     }, 1000 / MOB_ANIM_FPS);
                     setTimeout(() => { try { clearInterval(_dfint); if (de.isConnected) de.remove(); } catch (e) {} }, _dfCfg.n * (1000 / MOB_ANIM_FPS) + 2000);   // 保險回收
@@ -919,7 +919,7 @@ function _vfxCastProjectiles(before, ele) {
 //      （原 v3.2.8 註記「別修正成依目標方位」已由用戶明令反轉：現在就是要箭真正朝敵人位置飛。）
 const ARROW_FX_MS = 200;      // 飛行時間（略長於法術拋射物 180ms→箭矢看得出軌跡）
 let _arrowFxCache = {};       // dir(0-7) → Image（預載·避免首發閃爍）
-(function _preloadArrowFx() { for (let d = 0; d < 8; d++) { let im = new Image(); im.src = 'assets/fx/箭矢/arrow_d' + d + '.png'; _arrowFxCache[d] = im; } })();
+(function _preloadArrowFx() { for (let d = 0; d < 8; d++) { _arrowFxCache[d] = PreloadCachedImage('assets/fx/箭矢/arrow_d' + d + '.png'); } })();
 // 持弓的一般攻擊呼叫（js/04 playerAttack／js/03 rapidfireProc／js/06 allyAttackOnce／allyRapidfire）
 //   delayMs：連射每箭錯開發射，免得整束箭疊在同一條線上
 function playArrowFx(who, target, delayMs) {
@@ -944,7 +944,7 @@ function playArrowFx(who, target, delayMs) {
             let _dir = (typeof _vec2dir === 'function') ? _vec2dir(tx - sx, ty - sy) : 0;
             let img = _arrowFxCache[_dir]; if (!img) return;
             let el = document.createElement('img');
-            el.className = 'vfx-arrow'; el.src = img.src; el.alt = ''; el.draggable = false;
+            el.className = 'vfx-arrow'; SetCachedImageSrc(el, GetCachedImageSource(img)); el.alt = ''; el.draggable = false;
             el.style.left = sx + 'px'; el.style.top = sy + 'px';
             layer.appendChild(el);
             let dx = tx - sx, dy = ty - sy;
@@ -1309,18 +1309,18 @@ function _renderMobsImpl() {
             if (typeof MOB_SHADOW_TINT !== 'undefined' && MOB_SHADOW_TINT.has(m.n)) _innerAnimCls += ' mob-shadow-tint';   // 🌑 灰白剪影怪→半透明黑影
             if (typeof MOB_ANIM_BIG !== 'undefined' && MOB_ANIM_BIG.has(m.n)) _innerAnimCls += ' mob-anim-big';   // 🐉 大畫布非頭目怪→頭目級 185px 高度上限（v3.0.37）
             if (typeof MOB_ANIM_SMALL !== 'undefined' && MOB_ANIM_SMALL.has(m.n)) _innerAnimCls += ' mob-anim-small';   // 🔻 v3.1.65 過大/攻擊死亡溢框怪→整體等比縮小（max-height 降至 85%·本體+_s+_w+技能特效同縮同步）
-            let _shadowLayer = _spriteShadow ? `<img class="mob-anim-shadow w-24 h-24 p-1 object-contain pointer-events-none" src="assets/anim/${_animDir(m.n)}/idle_s_0.png" alt="" aria-hidden="true" onload="this.style.display='';this.style.visibility=''" onerror="this.style.visibility='hidden'">` : '';
+            let _shadowLayer = _spriteShadow ? `<img class="mob-anim-shadow w-24 h-24 p-1 object-contain pointer-events-none" data-cache-src="assets/anim/${_animDir(m.n)}/idle_s_0.png" alt="" aria-hidden="true" onload="this.style.display='';this.style.visibility=''" onerror="this.style.visibility='hidden'">` : '';
             // ⚔️ v2.7.22 武器揮動特效層(疊本體「前」·screen)：同影子機制·排在本體 img 之後
             let _weaponFx = MOB_ANIM_NAMES.has(m.n) && (typeof MOB_ANIM_WEAPON_FX !== 'undefined') && MOB_ANIM_WEAPON_FX.has(m.n);
-            let _weaponLayer = _weaponFx ? `<img class="mob-anim-weapon w-24 h-24 p-1 object-contain pointer-events-none" src="assets/anim/${_animDir(m.n)}/idle_w_0.png" alt="" aria-hidden="true" onload="this.style.display='';this.style.visibility=''" onerror="this.style.visibility='hidden'">` : '';
+            let _weaponLayer = _weaponFx ? `<img class="mob-anim-weapon w-24 h-24 p-1 object-contain pointer-events-none" data-cache-src="assets/anim/${_animDir(m.n)}/idle_w_0.png" alt="" aria-hidden="true" onload="this.style.display='';this.style.visibility=''" onerror="this.style.visibility='hidden'">` : '';
             // ⚔️ v2.7.40 第二武器層(_w2·如伊弗利特雙武器/雙火焰)：與 _w 同機制·再疊一層 .mob-anim-weapon2
             let _weaponFx2 = MOB_ANIM_NAMES.has(m.n) && (typeof MOB_ANIM_WEAPON_FX2 !== 'undefined') && MOB_ANIM_WEAPON_FX2.has(m.n);
-            let _weaponLayer2 = _weaponFx2 ? `<img class="mob-anim-weapon2 w-24 h-24 p-1 object-contain pointer-events-none" src="assets/anim/${_animDir(m.n)}/idle_w2_0.png" alt="" aria-hidden="true" onload="this.style.display='';this.style.visibility=''" onerror="this.style.visibility='hidden'">` : '';
+            let _weaponLayer2 = _weaponFx2 ? `<img class="mob-anim-weapon2 w-24 h-24 p-1 object-contain pointer-events-none" data-cache-src="assets/anim/${_animDir(m.n)}/idle_w2_0.png" alt="" aria-hidden="true" onload="this.style.display='';this.style.visibility=''" onerror="this.style.visibility='hidden'">` : '';
             let _npcClanCrown = '';
             if (m._npcClanLeader && m._npcClanConflict && m._npcClanHasCastle && !m._dead && m.curHp > 0) {
                 let _crownAvatar = m._pvpAvatar === '公主' ? '公主' : '王子';
                 let _crownAnchor = _crownAvatar === '公主' ? [33, 82] : [58, 87];
-                _npcClanCrown = `<img class="npc-clan-castle-crown" src="assets/ui/castle-crown.gif?v=v3.6.22" alt="" aria-hidden="true" draggable="false" style="left:${_crownAnchor[0]}px;bottom:${_crownAnchor[1]}px;">`;
+                _npcClanCrown = `<img class="npc-clan-castle-crown" data-cache-src="assets/ui/castle-crown.gif?v=v3.6.22" alt="" aria-hidden="true" draggable="false" style="left:${_crownAnchor[0]}px;bottom:${_crownAnchor[1]}px;">`;
             }
             let _npcClanNameTag = m._npcClanName
                 ? `<span class="text-[10px] font-bold text-cyan-200 whitespace-nowrap">［${m._npcClanLeader ? '盟主・' : ''}${m._npcClanName}］</span>`
@@ -1331,7 +1331,7 @@ function _renderMobsImpl() {
                         </div>
                         ${badges}
                         <div class="flex justify-center mb-1 mob-img-wrap">
-                            <span class="mob-img-inner${_innerAnimCls}">${_shadowLayer}<img src="${_mi.src}" data-fb="${_mi.fb.concat(['https://placehold.co/100x100/1e293b/ffffff?text=?']).join('|')}" alt="${m.n}" onerror="_mobImgErr(this)" class="w-24 h-24 p-1 object-contain pointer-events-none${m._grace ? ' grace-glow' : ''}">${_weaponLayer}${_weaponLayer2}${_npcClanCrown}</span>
+                            <span class="mob-img-inner${_innerAnimCls}">${_shadowLayer}<img data-cache-src="${_mi.src}" data-fb="${_mi.fb.concat(['https://placehold.co/100x100/1e293b/ffffff?text=?']).join('|')}" alt="${m.n}" onerror="_mobImgErr(this)" class="w-24 h-24 p-1 object-contain pointer-events-none${m._grace ? ' grace-glow' : ''}">${_weaponLayer}${_weaponLayer2}${_npcClanCrown}</span>
                         </div>
                         <div class="flex justify-center items-center gap-2 mb-1" style="height:16px;display:flex;align-items:center;justify-content:center;gap:8px;">${_statRow}</div>
                         ${_hpBar}
@@ -1368,6 +1368,7 @@ function _renderMobsImpl() {
         }
         // 🖱️ name-show（hover 顯名）不再進 diff 字串、改由 _applyHoverName 單一管理→hover 不再觸發整格重建；
         //    但被重建過的格會丟失 hover class，故只在「有寫入 DOM」時重新套用一次（無重建的幀維持原樣、零成本）。
+        if (_wrote) { try { CacheImageTree(_ml); } catch(e){} }   // 🖼️ 動畫圖片先以 data-cache-src 建立，再統一換成 Blob URL，避免 innerHTML 直接觸發原始請求
         if (_wrote) _applyHoverName();
         if (_wrote) { try { _mobAnimApply(); } catch(e){} }   // 🎞️ 重建過的格子立即補上當前動畫幀（同一同步工作內→不閃回靜態圖）
     }
@@ -1580,7 +1581,7 @@ function mobStillImg(name, staticUrl, preferSpawn) {
 function _mobImgErr(img) {
     try {
         let fb = (img.getAttribute('data-fb') || '').split('|').filter(Boolean);
-        if (fb.length) { img.setAttribute('data-fb', fb.slice(1).join('|')); img.src = fb[0]; }
+        if (fb.length) { img.setAttribute('data-fb', fb.slice(1).join('|')); SetCachedImageSrc(img, fb[0]); }
         else { img.onerror = null; }
     } catch (e) { img.onerror = null; }
 }
@@ -1628,10 +1629,12 @@ function _probeFramesWin(urlFor, maxF, minF, done) {
             done(n >= (minF || 2) ? got.slice(0, n) : null, n);
         };
         for (let i = 0; i < known; i++) {
-            let im = new Image();
-            im.onload = () => { got[i] = im; step(); };
-            im.onerror = () => { got[i] = false; step(); };                   // manifest 過期→該幀當缺號·截斷至連續段
-            im.src = urlFor(i);
+            let im = PreloadCachedImage(urlFor(i));
+            im.ready.then(() => {
+                if (im.naturalWidth && im.naturalHeight && !im.cacheLoadFailed) got[i] = im;
+                else got[i] = false;                                         // manifest 過期／decode 失敗→該幀當缺號·截斷至連續段
+                step();
+            });
         }
         return;
     }
@@ -1651,10 +1654,13 @@ function _probeFramesWin(urlFor, maxF, minF, done) {
     function pump() {
         while (!finished && inFlight < WIN && next < stopAt) {
             let i = next++; inFlight++;
-            let im = new Image();
-            im.onload = () => { inFlight--; results[i] = im; settle(); };
-            im.onerror = () => { inFlight--; results[i] = false; if (i < stopAt) stopAt = i; settle(); };
-            im.src = urlFor(i);
+            let im = PreloadCachedImage(urlFor(i));
+            im.ready.then(() => {
+                inFlight--;
+                if (im.naturalWidth && im.naturalHeight && !im.cacheLoadFailed) results[i] = im;
+                else { results[i] = false; if (i < stopAt) stopAt = i; }
+                settle();
+            });
         }
     }
     pump();
@@ -1810,11 +1816,11 @@ function _mob8Apply(c, m, uid, now) {
     if (_act === null && a.idle) { let _ofs = 0; { let s = String(uid); for (let j = 0; j < s.length; j++) _ofs += s.charCodeAt(j); } _act = 'idle'; _f = (Math.floor(now / (1000 / MOB_ANIM_FPS)) + _ofs) % a.idle.length; }
     if (_act === null) return;
     let _bseq = a[_act];
-    if (_bseq && _bseq[_f] && img.src !== _bseq[_f].src) img.src = _bseq[_f].src;
+    if (_bseq && _bseq[_f]) SetCachedImageSrc(img, GetCachedImageSource(_bseq[_f]));
     let _simg = c.querySelector('.mob-anim-shadow');
     if (_simg && a.shadow) {
         let _sseq = a.shadow[_act];
-        if (_sseq && _sseq.length) { if (_simg.style.visibility === 'hidden') _simg.style.visibility = ''; let _sf = _f < _sseq.length ? _f : (_f % _sseq.length); if (_simg.src !== _sseq[_sf].src) _simg.src = _sseq[_sf].src; }
+        if (_sseq && _sseq.length) { if (_simg.style.visibility === 'hidden') _simg.style.visibility = ''; let _sf = _f < _sseq.length ? _f : (_f % _sseq.length); SetCachedImageSrc(_simg, GetCachedImageSource(_sseq[_sf])); }
         else if (_simg.style.visibility !== 'hidden') _simg.style.visibility = 'hidden';
     }
 }
@@ -1853,18 +1859,18 @@ function _mobAnimApply() {
         }
         if (_act !== null) {
             let _bseq = a[_act];
-            if (_bseq && _bseq[_f] && img.src !== _bseq[_f].src) img.src = _bseq[_f].src;
+            if (_bseq && _bseq[_f]) SetCachedImageSrc(img, GetCachedImageSource(_bseq[_f]));
             if (a.shadow) {   // 🌑 真實影子層：同動作同幀（缺該動作退 idle·幀數不足取模）→與本體像素級同步
                 let _simg = c.querySelector('.mob-anim-shadow');
                 if (_simg) { let _sseq = a.shadow[_act];   // 🌑 v2.7.41 該動作無影子→隱藏(不再退 idle)：不死鳥 death 無 death_s→死亡無影子(用戶要求·全 164 影子怪僅此一例不對稱)
-                    if (_sseq && _sseq.length) { if (_simg.style.display === 'none') _simg.style.display = ''; if (_simg.style.visibility === 'hidden') _simg.style.visibility = ''; let _sf = _f < _sseq.length ? _f : (_f % _sseq.length); if (_simg.src !== _sseq[_sf].src) _simg.src = _sseq[_sf].src; }
+                    if (_sseq && _sseq.length) { if (_simg.style.display === 'none') _simg.style.display = ''; if (_simg.style.visibility === 'hidden') _simg.style.visibility = ''; let _sf = _f < _sseq.length ? _f : (_f % _sseq.length); SetCachedImageSrc(_simg, GetCachedImageSource(_sseq[_sf])); }
                     else if (_simg.style.visibility !== 'hidden') _simg.style.visibility = 'hidden'; }
             }
             if (a.weapon) {   // ⚔️ 武器揮動特效層：v2.7.36 嚴格「直接對照本動作本幀」(_w 與本體動作 1:1 逐幀對照·不退 idle·不取模)；本動作或本幀無 _w→隱藏(不殘留上一動作的舊武器幀)
                 let _wimg = c.querySelector('.mob-anim-weapon');
                 if (_wimg) {
                     let _wseq = a.weapon[_act];
-                    if (_wseq && _wseq[_f]) { if (_wimg.style.display === 'none') _wimg.style.display = ''; if (_wimg.style.visibility === 'hidden') _wimg.style.visibility = ''; if (_wimg.src !== _wseq[_f].src) _wimg.src = _wseq[_f].src; }
+                    if (_wseq && _wseq[_f]) { if (_wimg.style.display === 'none') _wimg.style.display = ''; if (_wimg.style.visibility === 'hidden') _wimg.style.visibility = ''; SetCachedImageSrc(_wimg, GetCachedImageSource(_wseq[_f])); }
                     else if (_wimg.style.visibility !== 'hidden') _wimg.style.visibility = 'hidden';
                 }
             }
@@ -1872,7 +1878,7 @@ function _mobAnimApply() {
                 let _w2img = c.querySelector('.mob-anim-weapon2');
                 if (_w2img) {
                     let _w2seq = a.weapon2[_act];
-                    if (_w2seq && _w2seq[_f]) { if (_w2img.style.display === 'none') _w2img.style.display = ''; if (_w2img.style.visibility === 'hidden') _w2img.style.visibility = ''; if (_w2img.src !== _w2seq[_f].src) _w2img.src = _w2seq[_f].src; }
+                    if (_w2seq && _w2seq[_f]) { if (_w2img.style.display === 'none') _w2img.style.display = ''; if (_w2img.style.visibility === 'hidden') _w2img.style.visibility = ''; SetCachedImageSrc(_w2img, GetCachedImageSource(_w2seq[_f])); }
                     else if (_w2img.style.visibility !== 'hidden') _w2img.style.visibility = 'hidden';
                 }
             }
@@ -2274,7 +2280,7 @@ function _playerMorphApply() {   // 8fps ticker 驅動（🗡️ v3.0.67 形態�
         let sh = document.createElement('img'); sh.className = 'pm-shadow';
         let bd = document.createElement('img'); bd.className = 'pm-body';
         let wp = document.createElement('img'); wp.className = 'pm-weapon';
-        let cr = document.createElement('img'); cr.className = 'pm-castle-crown'; cr.src = 'assets/ui/castle-crown.gif?v=v3.6.22'; cr.style.visibility = 'hidden';
+        let cr = document.createElement('img'); cr.className = 'pm-castle-crown'; SetCachedImageSrc(cr, 'assets/ui/castle-crown.gif?v=v3.6.22'); cr.style.visibility = 'hidden';
         [sh, bd, wp, cr].forEach(i => { i.alt = ''; i.draggable = false; });
         el.append(sh, bd, wp, cr);
         bv.appendChild(el);
@@ -2334,16 +2340,16 @@ function _playerMorphApply() {   // 8fps ticker 驅動（🗡️ v3.0.67 形態�
     let seq = (act === 'skill' && _useW) ? a.wskill : a[act]; if (!seq || !seq[f]) return;
     let I = _pmState.imgs;
     if (!I.cr && _pmState.el) {
-        let cr = document.createElement('img'); cr.className = 'pm-castle-crown'; cr.src = 'assets/ui/castle-crown.gif?v=v3.6.22'; cr.alt = ''; cr.draggable = false; cr.style.visibility = 'hidden';
+        let cr = document.createElement('img'); cr.className = 'pm-castle-crown'; SetCachedImageSrc(cr, 'assets/ui/castle-crown.gif?v=v3.6.22'); cr.alt = ''; cr.draggable = false; cr.style.visibility = 'hidden';
         _pmState.el.appendChild(cr); I.cr = cr;
     }
-    if (I.bd.src !== seq[f].src) I.bd.src = seq[f].src;
+    SetCachedImageSrc(I.bd, GetCachedImageSource(seq[f]));
     _playerBattleCrownApply(I.cr, form, act);
     let ss = (act === 'skill' && _useW) ? a.shadow.wskill : a.shadow[act];   // 影子：寬容（幀數不足取模·缺動作隱藏）
-    if (ss && ss.length) { let sf = f < ss.length ? f : (f % ss.length); if (I.sh.style.visibility === 'hidden') I.sh.style.visibility = ''; if (I.sh.src !== ss[sf].src) I.sh.src = ss[sf].src; }
+    if (ss && ss.length) { let sf = f < ss.length ? f : (f % ss.length); if (I.sh.style.visibility === 'hidden') I.sh.style.visibility = ''; SetCachedImageSrc(I.sh, GetCachedImageSource(ss[sf])); }
     else if (I.sh.style.visibility !== 'hidden') I.sh.style.visibility = 'hidden';
     let ws = a.weapon[act];   // 武器：嚴格 1:1（本動作本幀無 _w→隱藏·v2.7.36 規則）
-    if (ws && ws[f]) { if (I.wp.style.visibility === 'hidden') I.wp.style.visibility = ''; if (I.wp.src !== ws[f].src) I.wp.src = ws[f].src; }
+    if (ws && ws[f]) { if (I.wp.style.visibility === 'hidden') I.wp.style.visibility = ''; SetCachedImageSrc(I.wp, GetCachedImageSource(ws[f])); }
     else if (I.wp.style.visibility !== 'hidden') I.wp.style.visibility = 'hidden';
 }
 // 🧝 施法觸發：包裝 manualCast（castSkill 已於上方 VFX 包裝內加掛）
@@ -2447,13 +2453,13 @@ function _allySpritesApply() {   // 8fps ticker 驅動
         if (act === null && a.idle) { act = 'idle'; f = (Math.floor(Date.now() / (1000 / MOB_ANIM_FPS)) + i * 3) % a.idle.length; _useW = false; }   // 隊員間錯相（+i*3）
         if (act === null) return;
         let seq = (act === 'skill' && _useW) ? a.wskill : a[act]; if (!seq || !seq[f]) return;
-        if (st.imgs.bd.src !== seq[f].src) st.imgs.bd.src = seq[f].src;
+        SetCachedImageSrc(st.imgs.bd, GetCachedImageSource(seq[f]));
         let ss = (act === 'skill' && _useW) ? a.shadow.wskill : a.shadow[act];
-        if (ss && ss.length) { let sf = f < ss.length ? f : (f % ss.length); if (st.imgs.sh.style.visibility === 'hidden') st.imgs.sh.style.visibility = ''; if (st.imgs.sh.src !== ss[sf].src) st.imgs.sh.src = ss[sf].src; }
+        if (ss && ss.length) { let sf = f < ss.length ? f : (f % ss.length); if (st.imgs.sh.style.visibility === 'hidden') st.imgs.sh.style.visibility = ''; SetCachedImageSrc(st.imgs.sh, GetCachedImageSource(ss[sf])); }
         else if (st.imgs.sh.style.visibility !== 'hidden') st.imgs.sh.style.visibility = 'hidden';
         if (st.imgs.wp) {   // 🧝 v3.5.23 特效層：嚴格 1:1（本動作本幀無 _w→隱藏·同玩家 v2.7.36 規則）
             let ws = a.weapon && a.weapon[act];
-            if (ws && ws[f]) { if (st.imgs.wp.style.visibility === 'hidden') st.imgs.wp.style.visibility = ''; if (st.imgs.wp.src !== ws[f].src) st.imgs.wp.src = ws[f].src; }
+            if (ws && ws[f]) { if (st.imgs.wp.style.visibility === 'hidden') st.imgs.wp.style.visibility = ''; SetCachedImageSrc(st.imgs.wp, GetCachedImageSource(ws[f])); }
             else if (st.imgs.wp.style.visibility !== 'hidden') st.imgs.wp.style.visibility = 'hidden';
         }
     });

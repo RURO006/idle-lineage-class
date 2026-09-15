@@ -1519,11 +1519,12 @@ function renderLoadSelect(){
         _loadSlotMeta[n] = _slotBadgeMeta(n, sum);
         const title = sum ? `角色 ${n} ${sum.cls} Lv.${sum.lv}` : `角色 ${n} 空`;
         html += `<button type="button" onclick="loadSelectSlot(${n})" data-slot="${n}" data-key="${key}" class="load-slot-card ${selected ? 'selected' : ''} ${empty ? 'empty' : 'filled'}" title="${loadEsc(title)}">`
-            + `<img src="${loadFrameSrc(key, frame)}" alt="${loadEsc(title)}" draggable="false">`
+            + `<img data-cache-src="${loadFrameSrc(key, frame)}" alt="${loadEsc(title)}" draggable="false">`
             + _slotBadgeHtml(_slotPartyStatusNow(_loadSlotMeta[n]))
             + `</button>`;
     }
     grid.innerHTML = html;
+    CacheImageTree(grid);
     const selectedSum = slotSummary(_loadSelectedSlot);
     const selectedKey = loadStartKeyFromSummary(selectedSum);
     _loadAnimState.key = selectedKey;
@@ -1663,7 +1664,7 @@ function loadDeleteSelected(){
             && (!gameScreen || gameScreen.classList.contains('hidden'));
         if(selectionVisible && now - _loadAnimState.lastAt >= _loadAnimState.stepMs){
             _loadAnimState.noneFrame = _loadAnimState.noneFrame >= LOAD_NONE_ANIM_FRAMES[1] ? LOAD_NONE_ANIM_FRAMES[0] : _loadAnimState.noneFrame + 1;
-            document.querySelectorAll('.load-slot-card.empty img').forEach(img => { img.src = loadFrameSrc('none', _loadAnimState.noneFrame); });
+            document.querySelectorAll('.load-slot-card.empty img').forEach(img => { SetCachedImageSrc(img, loadFrameSrc('none', _loadAnimState.noneFrame)); });
             const selected = document.querySelector('.load-slot-card.selected.filled');
             if(selected){
                 const key = selected.dataset.key || 'prince';
@@ -1675,7 +1676,7 @@ function loadDeleteSelected(){
                     _loadAnimState.frame = _loadAnimState.frame >= range[1] ? range[0] : _loadAnimState.frame + 1;
                 }
                 const img = selected.querySelector('img');
-                if(img) img.src = loadFrameSrc(key, _loadAnimState.frame);
+                if(img) SetCachedImageSrc(img, loadFrameSrc(key, _loadAnimState.frame));
             }
             _loadAnimState.lastAt = now;
         }
@@ -1750,7 +1751,7 @@ function setCreationClassAnimation(c){
         creationClassAnim = { key: 'none', frame: 0, first: 0, last: 0, lastAt: 0, stepMs: 82, static: true };
         const img = document.getElementById('class-preview-img');
         if(img){
-            img.src = 'assets/start/0.png';
+            SetCachedImageSrc(img, 'assets/start/0.png');
             img.style.display = 'block';
         }
         return;
@@ -1759,12 +1760,12 @@ function setCreationClassAnimation(c){
     creationClassAnim = { key, frame: range[0], first: range[0], last: range[1], lastAt: 0, stepMs: 82, static: false };
     const img = document.getElementById('class-preview-img');
     if(img){
-        img.src = `assets/start/${key}/${range[0]}.png`;
+        SetCachedImageSrc(img, `assets/start/${key}/${range[0]}.png`);
         img.style.display = 'block';
     }
     if(typeof playCreationFrameSfx === 'function') playCreationFrameSfx(key, range[0]);
     for(let n = range[0]; n <= Math.min(range[1], range[0] + 10); n++){
-        const pre = new Image(); pre.src = `assets/start/${key}/${n}.png`;
+        PreloadCachedImage(`assets/start/${key}/${n}.png`);
     }
 }
 (function animateCreationClassPreview(){
@@ -1774,7 +1775,7 @@ function setCreationClassAnimation(c){
         const gs = document.getElementById('game-screen');   // 🔊 v3.4.17 已進遊戲→停創角動畫（防 creation-panel classList 殘留→動畫續跑並每 loop 重觸發創角音效）
         if(panel && img && !panel.classList.contains('hidden') && (!gs || gs.classList.contains('hidden')) && !creationClassAnim.static && now - creationClassAnim.lastAt >= creationClassAnim.stepMs){
             creationClassAnim.frame = creationClassAnim.frame >= creationClassAnim.last ? creationClassAnim.first : creationClassAnim.frame + 1;
-            img.src = `assets/start/${creationClassAnim.key}/${creationClassAnim.frame}.png`;
+            SetCachedImageSrc(img, `assets/start/${creationClassAnim.key}/${creationClassAnim.frame}.png`);
             if(creationClassAnim.frame === creationClassAnim.first && typeof playCreationFrameSfx === 'function') playCreationFrameSfx(creationClassAnim.key, creationClassAnim.frame);
             creationClassAnim.lastAt = now;
         }

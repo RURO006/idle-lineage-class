@@ -1829,10 +1829,10 @@ function _petAnimApply() {
             }
             let seq = a[act]; if (!seq || !seq[f]) continue;
             let im = el.querySelector('.pet-body'), sh = el.querySelector('.pet-shadow');
-            if (im.src !== seq[f].src) im.src = seq[f].src;
+            SetCachedImageSrc(im, GetCachedImageSource(seq[f]));
             let sseq = a.shadow && a.shadow[act];
             if (sh) {
-                if (sseq && sseq.length) { let sf = f < sseq.length ? f : f % sseq.length; if (sh.style.visibility === 'hidden') sh.style.visibility = ''; if (sh.src !== sseq[sf].src) sh.src = sseq[sf].src; }
+                if (sseq && sseq.length) { let sf = f < sseq.length ? f : f % sseq.length; if (sh.style.visibility === 'hidden') sh.style.visibility = ''; SetCachedImageSrc(sh, GetCachedImageSource(sseq[sf])); }
                 else if (sh.style.visibility !== 'hidden') sh.style.visibility = 'hidden';
             }
             if (p._downed && im.style.opacity !== '0.75') im.style.opacity = '0.75';

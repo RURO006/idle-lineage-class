@@ -997,12 +997,8 @@
             let count = Math.max(1, Math.floor(Number(manifest && manifest.unarmed_idle_) || 8));
             let frames = [], shadows = [];
             for (let i = 0; i < count; i++) {
-                let body = new Image();
-                body.src = base + '/unarmed_idle_' + i + '.png';
-                frames.push(body);
-                let shadow = new Image();
-                shadow.src = base + '/unarmed_idle_s_' + i + '.png';
-                shadows.push(shadow);
+                frames.push(PreloadCachedImage(base + '/unarmed_idle_' + i + '.png'));
+                shadows.push(PreloadCachedImage(base + '/unarmed_idle_s_' + i + '.png'));
             }
             _classFrameCache[key] = { folder: folder, frames: frames, shadows: shadows };
         }
